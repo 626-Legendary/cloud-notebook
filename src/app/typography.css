@@ -1,0 +1,36 @@
+/* Single source of truth for UI font sizes. Never use these inside document content.
+   Compact keeps captions >=12px; equal caption/secondary sizes use color/weight
+   to distinguish metadata. Large preserves a two-pixel step across roles. */
+:root,
+:root[data-ui-font-size="standard"] {
+  --ui-caption: 12px;
+  --ui-secondary: 14px;
+  --ui-body: 16px;
+  --ui-heading: 20px;
+  --ui-title: 24px;
+}
+
+:root[data-ui-font-size="compact"] {
+  --ui-caption: 12px;
+  --ui-secondary: 12px;
+  --ui-body: 14px;
+  --ui-heading: 18px;
+  --ui-title: 22px;
+}
+
+:root[data-ui-font-size="large"] {
+  --ui-caption: 14px;
+  --ui-secondary: 16px;
+  --ui-body: 18px;
+  --ui-heading: 22px;
+  --ui-title: 26px;
+}
+
+/* Tailwind v4 semantic utilities; existing text-sm/xs/base stay unchanged. */
+@theme inline {
+  --text-ui-caption: var(--ui-caption);
+  --text-ui-secondary: var(--ui-secondary);
+  --text-ui-body: var(--ui-body);
+  --text-ui-heading: var(--ui-heading);
+  --text-ui-title: var(--ui-title);
+}

@@ -1,0 +1,57 @@
+# Dependencies, build output and local Git metadata
+node_modules
+.next
+.git
+out
+dist
+build
+*.tsbuildinfo
+
+# Local credentials; sanitized environment templates may enter the context
+.env*
+!.env.example
+!.env.*.example
+Account.txt
+Command.md
+.aws
+.codex
+.agents
+.ssh
+.npmrc
+.netrc
+.pypirc
+.docker
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Runtime data and browser/test artifacts
+data
+backups
+test-results
+playwright-report
+blob-report
+coverage
+playwright/.auth
+playwright/.cache
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.log
+*.log.*
+
+# Local tooling and temporary files
+.idea
+.vscode
+.vercel
+.turbo
+.cache
+logs
+tmp
+temp
+*.tmp
+.DS_Store

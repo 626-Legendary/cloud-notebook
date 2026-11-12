@@ -1,0 +1,80 @@
+import fs from "node:fs/promises";
+import { test, expect } from "@playwright/test";
+import { nativeDocument } from "../fixtures/native-document";
+import { parseCnf, createCnfZip } from "../../src/lib/cnf-format";
+
+test("native CNF UI round-trip preserves rich content, ordering, images, cover and editable tables", async ({ page, baseURL, browser }, testInfo) => {
+  if (process.env.E2E_ALLOW_MUTATIONS !== "1" || baseURL !== "http://127.0.0.1:3002") throw new Error("Disposable 3002 server required");
+  const headers = { Origin: baseURL };
+  const password = "BrowserTest12345";
+  const errors: string[] = []; page.on("pageerror", (error) => errors.push(error.message));
+  expect((await page.request.post("/api/auth/register", { headers, data: { username: `cnf_${Date.now()}`, password, confirmPassword: password } })).status()).toBe(201);
+  const uploaded = await page.request.post("/api/assets/upload", { headers, multipart: { file: { name: "封面.png", mimeType: "image/png", buffer: await fs.readFile("tests/fixtures/cover.png") } } });
+  expect(uploaded.status()).toBe(201); const { asset } = await uploaded.json();
+  const { notebook } = await (await page.request.post("/api/notebooks", { headers, data: { title: "原生备份 Rich Notebook" } })).json();
+  expect((await page.request.patch(`/api/notebooks/${notebook.id}`, { headers, data: { coverAssetId: asset.id } })).ok()).toBe(true);
+  const { page: first } = await (await page.request.post(`/api/notebooks/${notebook.id}/pages`, { headers, data: { title: "完整格式" } })).json();
+  const { page: second } = await (await page.request.post(`/api/notebooks/${notebook.id}/pages`, { headers, data: { title: "另一页面" } })).json();
+  const document = nativeDocument(asset.id);
+  expect((await page.request.patch(`/api/pages/${first.id}`, { headers, data: { version: 1, content: document } })).ok()).toBe(true);
+  expect((await page.request.patch("/api/pages/reorder", { headers, data: { notebookId: notebook.id, pageIds: [second.id, first.id] } })).ok()).toBe(true);
+  await page.goto("/app");
+  await expect(page.getByRole("heading", { name: "我的笔记本" })).toBeVisible();
+  await expect(page.getByRole("button", { name: `打开笔记本：${notebook.title}`, exact: true }).locator("img")).toBeVisible();
+  await page.getByRole("button", { name: `打开笔记本：${notebook.title}`, exact: true }).click();
+  await expect(page.locator(".pages-panel-title")).toHaveText(notebook.title);
+  await expect(page.locator(".page-list .page-row-title")).toHaveText(["另一页面", "完整格式"]);
+  await page.getByLabel("原生备份 Rich Notebook 操作", { exact: true }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: "导出笔记本 (.cnf)", exact: true }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("原生备份 Rich Notebook.cnf");
+  const bytes = await fs.readFile((await download.path())!);
+  const archive = await parseCnf(bytes);
+  expect(archive.manifest.applicationVersion).toBe("1.0.1112");
+  expect(archive.manifest.assets).toHaveLength(1);
+  expect(archive.notebook.pages.map((item) => item.title)).toEqual(["另一页面", "完整格式"]);
+  await page.locator(".brand-home-link").click();
+  await expect(page.locator(".notebook-home-grid")).toBeVisible();
+  expect(new URL(page.url()).search).toBe("");
+  await page.getByLabel("选择 CNF 笔记本", { exact: true }).setInputFiles({ name: download.suggestedFilename(), mimeType: "application/zip", buffer: bytes });
+  await expect(page.getByText(`已导入笔记本「${notebook.title}」`, { exact: true })).toBeVisible();
+  const all = (await (await page.request.get("/api/notebooks")).json()).notebooks;
+  expect(all).toHaveLength(2);
+  const imported = all.find((item: { id: string }) => item.id !== notebook.id);
+  expect(imported.coverAssetId).not.toBe(asset.id);
+  const importedPages = (await (await page.request.get(`/api/notebooks/${imported.id}/pages`)).json()).pages;
+  expect(importedPages.map((item: { title: string }) => item.title)).toEqual(["另一页面", "完整格式"]);
+  const detail = (await (await page.request.get(`/api/pages/${importedPages[1].id}`)).json()).page;
+  expect(JSON.parse(detail.content)).toEqual(JSON.parse(JSON.stringify(document).replaceAll(asset.id, imported.coverAssetId)));
+  const importedImage = await page.request.get(`/uploads/notes/${imported.coverAssetId}`);
+  expect(importedImage.ok()).toBe(true);
+  expect(await importedImage.body()).toEqual(await fs.readFile("tests/fixtures/cover.png"));
+  // Open the newly imported card, edit its table, save and export a second native archive.
+  await page.locator(".notebook-home-card").filter({ has: page.locator(`img[src="/uploads/notes/${imported.coverAssetId}"]`) }).click();
+  await page.locator(".page-row").filter({ hasText: "完整格式" }).locator(".page-row-open").click();
+  await expect(page.locator(".notebook-editor img")).toBeVisible();
+  await page.locator(".notebook-editor td").first().click(); await page.keyboard.type(" 已编辑");
+  await page.keyboard.press("Control+s");
+  await expect.poll(async () => (await (await page.request.get(`/api/pages/${importedPages[1].id}`)).json()).page.content).toContain("已编辑");
+  const again = await page.request.get(`/api/notebooks/${imported.id}/cnf`);
+  expect(again.ok()).toBe(true);
+  expect(JSON.stringify((await parseCnf(await again.body())).notebook)).toContain("已编辑");
+  const other = await browser.newContext({ baseURL });
+  try {
+    expect((await other.request.get(`/api/notebooks/${notebook.id}/cnf`)).status()).toBe(401);
+    expect((await other.request.post("/api/auth/register", { headers, data: { username: `cnf_other_${Date.now()}`, password, confirmPassword: password } })).status()).toBe(201);
+    expect((await other.request.get(`/api/notebooks/${notebook.id}/cnf`)).status()).toBe(404);
+    expect((await other.request.get(`/uploads/notes/${imported.coverAssetId}`)).status()).toBe(404);
+    expect((await other.request.post("/api/notebooks/import", { headers: { Origin: "https://untrusted.example" }, multipart: { file: { name: "valid.cnf", mimeType: "application/zip", buffer: bytes } } })).status()).toBe(403);
+    for (const [name, data] of [["bad.txt", bytes], ["bad.cnf", Buffer.from("invalid ZIP")]] as const) {
+      expect((await other.request.post("/api/notebooks/import", { headers, multipart: { file: { name, mimeType: "application/zip", buffer: data } } })).status()).toBe(400);
+    }
+    const entries = new Map(archive.entries);
+    entries.set("manifest.json", Buffer.from(JSON.stringify({ ...archive.manifest, formatVersion: 99 })));
+    expect((await other.request.post("/api/notebooks/import", { headers, multipart: { file: { name: "future.cnf", mimeType: "application/zip", buffer: await createCnfZip(entries) } } })).status()).toBe(400);
+    expect((await (await other.request.get("/api/notebooks")).json()).notebooks).toHaveLength(0);
+  } finally { await other.close(); }
+  await page.screenshot({ path: testInfo.outputPath("imported-notebook.png"), fullPage: true });
+  expect(errors).toEqual([]);
+});

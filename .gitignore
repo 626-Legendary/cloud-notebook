@@ -1,0 +1,80 @@
+# Dependencies
+node_modules/
+
+# Next.js / build output / caches
+/.next/
+/out/
+/dist/
+/build/
+/.vercel/
+/.turbo/
+.cache/
+*.tsbuildinfo
+/next-env.d.ts
+
+# Local environment and secrets; keep sanitized templates
+.env*
+!.env.example
+!.env.*.example
+/Account.txt
+/Command.md
+/.aws/
+/.codex/
+/.agents/
+/.ssh/
+/.npmrc
+/.netrc
+/.pypirc
+/.docker/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Runtime data: database, uploads, backups
+# Ignore children rather than data/ itself so .gitkeep can be committed.
+/data/*
+!/data/.gitkeep
+/backups/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Test output and local browser authentication state
+/coverage/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+
+# Logs and temporary files
+/logs/
+*.log
+*.log.*
+/tmp/
+/temp/
+*.tmp
+*.swp
+*.swo
+*~
+
+# Local editor and operating system files
+/.idea/
+/.vscode/
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+
+# Keep source, migrations (including drizzle/meta), lockfiles,
+# configuration templates, fonts and their license files under version control.

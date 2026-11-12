@@ -1,0 +1,58 @@
+import { test, expect } from "@playwright/test";
+
+test("page panel resizing preserves editing, persists width and shares edge scrollbars and hierarchy", async ({ page, baseURL }, testInfo) => {
+  if (process.env.E2E_ALLOW_MUTATIONS !== "1" || baseURL !== "http://127.0.0.1:3002") throw new Error("Disposable 3002 server required");
+  const headers = { Origin: baseURL }, password = "BrowserTest12345";
+  expect((await page.request.post("/api/auth/register", { headers, data: { username: `panels_${Date.now()}`, password, confirmPassword: password } })).status()).toBe(201);
+  const { notebook } = await (await page.request.post("/api/notebooks", { headers, data: { title: "默认文件夹中的笔记本" } })).json();
+  const { page: note } = await (await page.request.post(`/api/notebooks/${notebook.id}/pages`, { headers, data: { title: "布局编辑验证" } })).json();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/app?page=${note.id}`);
+  const editor = page.locator(".notebook-editor"); await expect(editor).toBeVisible();
+  await editor.evaluate((element) => { element.dataset.resizeProbe = "kept"; });
+  await page.getByLabel("页面标题", { exact: true }).fill("拖动后保留的编辑");
+  const panel = page.locator(".pages-panel"), handle = page.getByRole("separator", { name: "调整页面面板宽度", exact: true });
+  await expect(handle).toHaveAttribute("aria-valuenow", "300");
+  const drag = async (distance: number) => {
+    const box = (await handle.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + 110); await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + distance, box.y + 110, { steps: 8 }); await page.mouse.up();
+  };
+  await drag(80); await expect(handle).toHaveAttribute("aria-valuenow", "380");
+  await expect.poll(async () => (await panel.boundingBox())!.width).toBe(380);
+  await drag(300); await expect(handle).toHaveAttribute("aria-valuenow", "450");
+  await expect(editor).toHaveAttribute("data-resize-probe", "kept");
+  await expect(page.getByLabel("页面标题", { exact: true })).toHaveValue("拖动后保留的编辑");
+  await handle.press("ArrowLeft"); await expect(handle).toHaveAttribute("aria-valuenow", "440");
+  await handle.press("Home"); await expect(handle).toHaveAttribute("aria-valuenow", "300");
+  await handle.press("ArrowLeft"); await expect(handle).toHaveAttribute("aria-valuenow", "300");
+  await handle.press("End"); await expect(handle).toHaveAttribute("aria-valuenow", "450");
+  await page.keyboard.press("Control+s");
+  await expect.poll(async () => (await (await page.request.get(`/api/pages/${note.id}`)).json()).page.title).toBe("拖动后保留的编辑");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("cloud-notebook:pages-panel-width"))).toBe("450");
+  await page.reload(); await expect(editor).toBeVisible();
+  await expect(handle).toHaveAttribute("aria-valuenow", "450");
+  const folderIcon = page.locator(".folder-row .folder-icon");
+  const child = page.locator(".notebook-icon");
+  expect((await child.boundingBox())!.x).toBeGreaterThan((await folderIcon.boundingBox())!.x + 16);
+  const gutter = async (list: string, parent: string) => {
+    const listBox = (await page.locator(list).boundingBox())!, parentBox = (await page.locator(parent).boundingBox())!;
+    return Math.abs(listBox.x + listBox.width - parentBox.x - parentBox.width);
+  };
+  expect(await gutter(".folder-tree", ".sidebar")).toBeLessThanOrEqual(2);
+  expect(await gutter(".pages-panel-scroll", ".pages-panel")).toBeLessThanOrEqual(2);
+  const divider = (await page.locator(".sidebar-brand-divider").first().boundingBox())!;
+  expect((await page.locator(".workspace-new-button").boundingBox())!.y - divider.y - divider.height).toBeGreaterThanOrEqual(16);
+  await expect(page.locator(".brand-small img")).toHaveAttribute("src", "/icon.png");
+  const search = page.getByRole("button", { name: "搜索当前页面", exact: true });
+  expect(await search.evaluate((element) => element.parentElement === document.querySelector(".toolbar-row > .toolbar-search"))).toBe(true);
+  expect(await page.locator(".toolbar-row").first().evaluate((element) => element.lastElementChild?.classList.contains("toolbar-search"))).toBe(true);
+  expect(Math.abs((await search.boundingBox())!.y - (await page.locator(".formatting-toolbar").boundingBox())!.y)).toBeLessThanOrEqual(2);
+  await search.click(); await expect(page.getByRole("searchbox", { name: "搜索当前页面正文" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await page.screenshot({ path: testInfo.outputPath("workspace-wide-panel.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(handle).not.toBeVisible();
+  await page.getByLabel("显示页面列表", { exact: true }).click();
+  await expect.poll(async () => (await panel.boundingBox())!.width).toBe(290);
+});
