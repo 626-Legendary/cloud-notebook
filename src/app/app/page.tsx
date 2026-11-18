@@ -9,5 +9,5 @@ export default async function AppPage() {
   if (!session) redirect("/login");
   if (session.role === "ADMIN") redirect("/admin");
   if (session.mustChangePassword) redirect("/change-password");
-  return <Workspace appVersion={process.env.APP_VERSION?.trim() || "1.0.1112"} />;
+  return <Workspace appVersion={process.env.APP_VERSION?.trim() || "1.1.1118"} />;
 }

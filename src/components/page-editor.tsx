@@ -1,5 +1,8 @@
 "use client";
 
+import { ContentTags } from "@/components/content-tags";
+import { KnowledgeMentions } from "@/components/knowledge-mentions";
+import { knowledgeNodeView } from "@/lib/knowledge-client";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { Extension } from "@tiptap/core";
 import type { Editor as TiptapEditor } from "@tiptap/core";
@@ -82,10 +85,11 @@ function createFindDecorations(doc: ProseMirrorNode, query: string) {
 }
 
 export function PageEditor({
-  page, autoSaveMode, breadcrumb, onNavigateFolder, onNavigateNotebook,
+  page, autoSaveMode, breadcrumb, onNavigateFolder, onNavigateNotebook, resourceType = "page",
   onOpenSidebar, onOpenPages, onSaved, onStatus, onOpenHistory, onExport, onGlobalSearch
 }: {
   page: PageData;
+  resourceType?: "page" | "entry";
   autoSaveMode: string;
   breadcrumb: { folder: string; notebook: string; page: string };
   onNavigateFolder: () => void;
@@ -98,6 +102,9 @@ export function PageEditor({
   onExport: () => void;
   onGlobalSearch: () => void;
 }) {
+  const documentKey = resourceType === "entry" ? `entry:${page.id}` : page.id;
+  const resourceUrl = `/api/${resourceType === "entry" ? "knowledge" : "pages"}/${page.id}`;
+  const panelRef = useRef<HTMLDivElement>(null);
   const confirm = useConfirm();
   const ask = useFormDialog();
   const [status, setStatus] = useState<SaveState>("saved");
@@ -154,7 +161,13 @@ export function PageEditor({
     extensions: initialDocument.extensions,
     content: initialDocument.content,
     editorProps: {
-      attributes: { class: "notebook-editor", "aria-label": "笔记正文" },
+      nodeViews: { knowledgeReference: knowledgeNodeView },
+      handleClickOn: (_view, _pos, node, nodePos, event) => {
+        if (node.type.name !== "knowledgeReference") return false;
+        window.dispatchEvent(new CustomEvent("cloud-notebook:knowledge-preview", { detail: { id: node.attrs.entryId, from: nodePos, to: nodePos + node.nodeSize, sourceType: resourceType, sourceId: page.id, x: event.clientX, y: event.clientY } }));
+        return true;
+      },
+      attributes: { class: "notebook-editor", "aria-label": resourceType === "entry" ? "词条正文" : "笔记正文" },
       handlePaste: (_view, event) => {
         const files = Array.from(event.clipboardData?.files ?? []).filter((item) => item.type.startsWith("image/"));
         if (files.length) {
@@ -180,7 +193,7 @@ export function PageEditor({
       editRevisionRef.current += 1;
       dirtyRef.current = true;
       if (!conflictRef.current) updateStatus("dirty");
-      const key = `cloud-notebook-draft:${page.id}`;
+      const key = `cloud-notebook-draft:${documentKey}`;
       localStorage.setItem(key, JSON.stringify({
         version: versionRef.current, title: titleRef.current, content: activeEditor.getJSON(), updatedAt: new Date().toISOString()
       }));
@@ -231,13 +244,14 @@ export function PageEditor({
   const save = useCallback(async function persist(preserveCurrentVersion = false) {
     const activeEditor = editorRef.current;
     if (!activeEditor || !dirtyRef.current) return;
+    if (resourceType === "entry" && !titleRef.current.trim()) { updateStatus("error"); setMessage("词条名称不能为空"); return; }
     if (conflictRef.current && !preserveCurrentVersion) return;
     if (savingRef.current) {
       saveAgainRef.current = true;
       return savingRef.current;
     }
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-    const operation = serializePageSave(page.id, async () => {
+    const operation = serializePageSave(documentKey, async () => {
       const editRevision = editRevisionRef.current;
       const body = {
         title: titleRef.current.trim() || "无标题",
@@ -248,7 +262,7 @@ export function PageEditor({
       updateStatus("saving");
       setMessage("");
       try {
-        const response = await fetch(`/api/pages/${page.id}`, {
+        const response = await fetch(resourceUrl, {
           method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
         });
         const result = await response.json();
@@ -266,11 +280,11 @@ export function PageEditor({
         onSavedRef.current(result.page);
         if (editRevisionRef.current === editRevision) {
           dirtyRef.current = false;
-          localStorage.removeItem(`cloud-notebook-draft:${page.id}`);
+          localStorage.removeItem(`cloud-notebook-draft:${documentKey}`);
           updateStatus("saved");
         } else {
           dirtyRef.current = true;
-          localStorage.setItem(`cloud-notebook-draft:${page.id}`, JSON.stringify({
+          localStorage.setItem(`cloud-notebook-draft:${documentKey}`, JSON.stringify({
             version: versionRef.current, title: titleRef.current, content: activeEditor.getJSON(), updatedAt: new Date().toISOString()
           }));
           updateStatus("dirty");
@@ -294,17 +308,17 @@ export function PageEditor({
         if (dirtyRef.current && !conflictRef.current) await persist();
       }
     }
-  }, [page.id, updateStatus]);
+  }, [documentKey, resourceUrl, resourceType, page.id, updateStatus]);
 
   const saveRef = useRef(save);
   useEffect(() => {
     saveRef.current = save;
   }, [save]);
-  useEffect(() => registerPageFlush(page.id, async () => {
+  useEffect(() => registerPageFlush(documentKey, async () => {
     await saveRef.current();
-    await waitForPageSaves(page.id);
+    await waitForPageSaves(documentKey);
     if (dirtyRef.current || conflictRef.current) throw new Error("请先保存或解决当前页面的版本冲突");
-  }), [page.id]);
+  }), [documentKey]);
   useEffect(() => {
     if (!editor) return;
     const refreshMatches = () => {
@@ -349,7 +363,7 @@ export function PageEditor({
   useEffect(() => {
     if (!editor || draftCheckedRef.current) return;
     draftCheckedRef.current = true;
-    const savedDraft = localStorage.getItem(`cloud-notebook-draft:${page.id}`);
+    const savedDraft = localStorage.getItem(`cloud-notebook-draft:${documentKey}`);
     if (savedDraft && editor) {
       try {
         const draft = JSON.parse(savedDraft) as { version?: number; title?: string; content?: unknown };
@@ -368,15 +382,16 @@ export function PageEditor({
         }
       } catch (error) {
         console.error("Unable to restore local editor draft", error);
-        localStorage.removeItem(`cloud-notebook-draft:${page.id}`);
+        localStorage.removeItem(`cloud-notebook-draft:${documentKey}`);
       }
     }
-  }, [confirm, editor, page.id, scheduleSave, updateStatus]);
+  }, [confirm, editor, page.id, documentKey, scheduleSave, updateStatus]);
 
   useEffect(() => {
     function onKeyDown(event: globalThis.KeyboardEvent) {
       const target = event.target instanceof Element ? event.target : null;
-      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      if (document.querySelector('[role="alertdialog"]')) return;
+      if (document.querySelector('[role="dialog"]') && !(event.target instanceof Node && panelRef.current?.contains(event.target))) return;
       if (matchesShortcut(event, "s")) {
         event.preventDefault();
         void saveRef.current();
@@ -458,7 +473,7 @@ export function PageEditor({
     dirtyRef.current = true;
     if (!conflictRef.current) updateStatus("dirty");
     const content = editorRef.current?.getJSON();
-    if (content) localStorage.setItem(`cloud-notebook-draft:${page.id}`, JSON.stringify({
+    if (content) localStorage.setItem(`cloud-notebook-draft:${documentKey}`, JSON.stringify({
       version: versionRef.current, title: value, content, updatedAt: new Date().toISOString()
     }));
     scheduleSave();
@@ -544,13 +559,14 @@ export function PageEditor({
   });
 
   async function overwriteLocalVersion() {
-    if (!await confirm("这会用当前本地内容替换服务器版本。覆盖前会自动保存服务器当前版本的历史快照。继续吗？", "覆盖服务器版本")) return;
+    if (!await confirm(resourceType === "entry" ? "这会用本地正文替换服务器词条。确认覆盖？" : "这会用当前本地内容替换服务器版本。覆盖前会自动保存服务器当前版本的历史快照。继续吗？", "覆盖服务器版本")) return;
     try {
       await savingRef.current;
-      const latest = await fetch(`/api/pages/${page.id}`);
+      const latest = await fetch(resourceUrl);
       const result = await latest.json();
       if (!latest.ok) throw new Error(result.error ?? "无法读取服务器版本");
-      versionRef.current = result.page.version;
+      const remotePage = resourceType === "entry" ? result.entry : result.page;
+      versionRef.current = remotePage.version;
       dirtyRef.current = true;
       await saveRef.current(true);
     } catch (cause) {
@@ -564,19 +580,20 @@ export function PageEditor({
     if (!await confirm("加载服务器版本会替换本地未保存内容。继续前请确认本地草稿不再需要。", "加载服务器版本")) return;
     try {
       await savingRef.current;
-      const latest = await fetch(`/api/pages/${page.id}`);
+      const latest = await fetch(resourceUrl);
       const result = await latest.json();
       if (!latest.ok) throw new Error(result.error ?? "无法读取服务器版本");
-      versionRef.current = result.page.version;
-      titleRef.current = result.page.title;
-      if (titleInputRef.current) titleInputRef.current.value = result.page.title;
-      editor?.commands.setContent(JSON.parse(result.page.content), { emitUpdate: false });
+      const remotePage = resourceType === "entry" ? result.entry : result.page;
+      versionRef.current = remotePage.version;
+      titleRef.current = remotePage.title;
+      if (titleInputRef.current) titleInputRef.current.value = remotePage.title;
+      editor?.commands.setContent(JSON.parse(remotePage.content), { emitUpdate: false });
       editRevisionRef.current += 1;
       dirtyRef.current = false;
       conflictRef.current = false;
-      localStorage.removeItem(`cloud-notebook-draft:${page.id}`);
+      localStorage.removeItem(`cloud-notebook-draft:${documentKey}`);
       updateStatus("saved");
-      onSavedRef.current(result.page);
+      onSavedRef.current(remotePage);
       setMessage("");
       setConflictDismissed(false);
     } catch (cause) {
@@ -599,18 +616,19 @@ export function PageEditor({
   if (!editor) return <WorkspaceLoading />;
 
   return (
-    <div className="editor-panel">
+    <div className="editor-panel" ref={panelRef}>
       <header className="editor-topbar">
         <div className="editor-topbar-navigation-row">
           <div className="editor-navigation">
-        <button className="icon-button mobile-nav-toggle" type="button" title="显示文件夹" aria-label="显示文件夹" onClick={onOpenSidebar}><Folder size={16} /></button>
-        <button className="icon-button mobile-nav-toggle" type="button" title="显示页面列表" aria-label="显示页面列表" onClick={onOpenPages}><NotebookPen size={16} /></button>
+        {resourceType === "page" && <button className="icon-button mobile-nav-toggle" type="button" title="显示文件夹" aria-label="显示文件夹" onClick={onOpenSidebar}><Folder size={16} /></button>}
+        {resourceType === "page" && <button className="icon-button mobile-nav-toggle" type="button" title="显示页面列表" aria-label="显示页面列表" onClick={onOpenPages}><NotebookPen size={16} /></button>}
         <nav className="breadcrumbs" aria-label="页面路径">
+          {resourceType === "entry" ? <><span>知识库</span><ChevronRight size={14} /><span aria-current="page" title={page.title}>{breadcrumbTitle(page.title)}</span></> : <>
           <button type="button" title={breadcrumb.folder} onClick={onNavigateFolder}>{breadcrumbTitle(breadcrumb.folder)}</button>
           <ChevronRight size={14} aria-hidden="true" />
           <button type="button" title={breadcrumb.notebook} onClick={onNavigateNotebook}>{breadcrumbTitle(breadcrumb.notebook)}</button>
           <ChevronRight size={14} aria-hidden="true" />
-          <span title={breadcrumb.page} aria-current="page">{breadcrumbTitle(breadcrumb.page)}</span>
+          <span title={breadcrumb.page} aria-current="page">{breadcrumbTitle(breadcrumb.page)}</span></>}
         </nav>
           </div>
         <div className="editor-actions">
@@ -625,9 +643,9 @@ export function PageEditor({
           {autoSaveMode === "off" && <button className="button-subtle" onClick={() => void saveRef.current()}>保存</button>}
           {status === "error" && <button className="button-subtle" onClick={() => void saveRef.current()}>重试</button>}
           {status === "conflict" && <button className="button-subtle" onClick={() => setConflictDismissed(false)}>处理冲突</button>}
-          <button className="button-subtle header-action" title="版本历史" onClick={onOpenHistory}><Clock3 size={15} /><span className="header-action-label">历史</span></button>
-          <button className="button-subtle header-action" title="导出 / 打印" onClick={onExport}><FileDown size={15} /><span className="header-action-label">导出</span></button>
-          <button className="button-subtle header-action" title="全局搜索 (Ctrl/Cmd+Shift+F)" onClick={onGlobalSearch}><Search size={15} /><span className="header-action-label">搜索</span></button>
+          {resourceType === "page" && <button className="button-subtle header-action" title="版本历史" onClick={onOpenHistory}><Clock3 size={15} /><span className="header-action-label">历史</span></button>}
+          {resourceType === "page" && <button className="button-subtle header-action" title="导出 / 打印" onClick={onExport}><FileDown size={15} /><span className="header-action-label">导出</span></button>}
+          {resourceType === "page" && <button className="button-subtle header-action" title="全局搜索 (Ctrl/Cmd+Shift+F)" onClick={onGlobalSearch}><Search size={15} /><span className="header-action-label">搜索</span></button>}
         </div>
         </div>
       </header>
@@ -754,14 +772,14 @@ export function PageEditor({
           </div>
           <div className="toolbar-search">
           <Popover open={findOpen} onOpenChange={(open) => { if (open) setFindOpen(true); else closePageFind(); }}>
-            <PopoverTrigger asChild><button className={`toolbar-button ${findOpen ? "active" : ""}`} type="button" aria-label="搜索当前页面" title="搜索当前页面 (Ctrl/Cmd+F)" aria-keyshortcuts="Control+f Meta+f"><Search size={16} /></button></PopoverTrigger>
+            <PopoverTrigger asChild><button className={`toolbar-button ${findOpen ? "active" : ""}`} type="button" aria-label={resourceType === "entry" ? "搜索当前词条" : "搜索当前页面"} title={resourceType === "entry" ? "搜索当前词条 (Ctrl/Cmd+F)" : "搜索当前页面 (Ctrl/Cmd+F)"} aria-keyshortcuts="Control+f Meta+f"><Search size={16} /></button></PopoverTrigger>
               <PopoverContent side="bottom" align="end" className="page-find-bar" onOpenAutoFocus={(event) => { event.preventDefault(); findInputRef.current?.focus(); }}>
           <input
             ref={findInputRef}
             type="search"
             value={findQuery}
-            placeholder="搜索当前页面..."
-            aria-label="搜索当前页面正文"
+            placeholder={resourceType === "entry" ? "搜索当前词条..." : "搜索当前页面..."}
+            aria-label={resourceType === "entry" ? "搜索当前词条正文" : "搜索当前页面正文"}
             onChange={(event) => { setFindQuery(event.target.value); setActiveFindMatch(0); }}
             onKeyDown={(event) => {
               if (event.key === "Escape") { event.preventDefault(); closePageFind(); }
@@ -796,13 +814,15 @@ export function PageEditor({
       <div className="editor-scroll">
         <ToastViewportAnchor />
         <div className="editor-content-wrap">
-          <textarea ref={titleInputRef} rows={1} maxLength={200} className="title-input" placeholder="无标题笔记" defaultValue={page.title} onChange={(event) => { resizeTitle(event.currentTarget); changeTitle(event.target.value); }} onKeyDown={(event) => {
+          <ContentTags sourceType={resourceType} sourceId={page.id} />
+          <textarea ref={titleInputRef} rows={1} maxLength={resourceType === "entry" ? 120 : 200} className="title-input" placeholder={resourceType === "entry" ? "词条名称" : "无标题笔记"} defaultValue={page.title} onChange={(event) => { resizeTitle(event.currentTarget); changeTitle(event.target.value); }} onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.preventDefault();
               editor.commands.focus();
             }
-          }} aria-label="页面标题" />
+          }} aria-label={resourceType === "entry" ? "词条名称" : "页面标题"} />
           <EditorContent editor={editor} />
+          <KnowledgeMentions editor={editor} currentEntryId={resourceType === "entry" ? page.id : undefined} />
           {imageBusy && <div className="status-line">正在上传图片...</div>}
         </div>
       </div>

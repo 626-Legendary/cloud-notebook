@@ -4,6 +4,7 @@ import { PrintDocument } from "@/components/print-document";
 import { db } from "@/db";
 import { notebooks, pages } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { resolveKnowledgeContent } from "@/lib/knowledge";
 import { renderDocument } from "@/lib/render-document";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,6 @@ export default async function PrintPage({ params }: { params: Promise<{ pageId: 
   if (!page) notFound();
   return <PrintDocument><main className="prose-print">
     <h1 className="print-page-title">{page.title}</h1>
-    <article>{renderDocument(page.content)}</article>
+    <article>{renderDocument(resolveKnowledgeContent(session.userId, page.content))}</article>
   </main></PrintDocument>;
 }

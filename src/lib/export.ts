@@ -7,6 +7,8 @@ import { databaseFile, db, sqlite } from "@/db";
 import { assets, folders, noteSnapshots, notebooks, pages, users } from "@/db/schema";
 import { extensionForMime } from "@/lib/images";
 import { contentToMarkdown } from "@/lib/markdown";
+import { getEntry, sourceTags } from "@/lib/knowledge";
+import type { CnfKnowledge } from "@/lib/cnf-format";
 import { safeFileName } from "@/lib/filename";
 
 export async function createUserExport(userId: string) {
@@ -25,12 +27,22 @@ export async function createUserExport(userId: string) {
     if (!extension || !fs.existsSync(file)) throw new Error(`附件文件缺失：${asset.originalName}`);
     return { asset, extension, file };
   });
+  const knowledge = sqlite.transaction((): CnfKnowledge => {
+    const entries = sqlite.prepare("SELECT id FROM knowledge_entries WHERE user_id=? AND deleted_at IS NULL").all(userId) as { id: string }[];
+    const pageIds = sqlite.prepare("SELECT id FROM pages WHERE user_id=?").all(userId) as { id: string }[];
+    return {
+      entries: entries.map(({ id }) => { const entry = getEntry(userId, id); return { id, title: entry.title, aliases: entry.aliases, content: JSON.parse(entry.content) as Record<string, unknown>, createdAt: entry.createdAt, updatedAt: entry.updatedAt, tagIds: entry.tags.map((tag) => tag.id) }; }),
+      tags: sqlite.prepare("SELECT id,name FROM tags WHERE user_id=?").all(userId) as { id: string; name: string }[],
+      pageTags: pageIds.map(({ id }) => ({ pageId: id, tagIds: sourceTags(userId, "page", id).map((tag) => tag.id) }))
+    };
+  })();
   const stream = new PassThrough();
   const archive = archiver("zip", { zlib: { level: 6 } });
   archive.on("error", (error) => stream.destroy(error));
   archive.pipe(stream);
   const exportAssets = userAssets.map(({ id, mimeType, originalName, size, createdAt }) => ({ id, mimeType, originalName, size, createdAt }));
-  const manifest = { formatVersion: 1, username: user.username, exportedAt: new Date().toISOString(), folderCount: userFolders.length, notebookCount: userNotebooks.length, pageCount: pageCount.value, snapshotCount: snapshotCount.value, assetCount: userAssets.length };
+  const manifest = { formatVersion: 2, knowledgeCount: knowledge.entries.length, tagCount: knowledge.tags.length, username: user.username, exportedAt: new Date().toISOString(), folderCount: userFolders.length, notebookCount: userNotebooks.length, pageCount: pageCount.value, snapshotCount: snapshotCount.value, assetCount: userAssets.length };
+  archive.append(JSON.stringify(knowledge), { name: "knowledge.json" });
   archive.append(JSON.stringify(manifest, null, 2), { name: "manifest.json" });
   archive.append(JSON.stringify(userFolders, null, 2), { name: "folders.json" });
   archive.append(JSON.stringify(userNotebooks, null, 2), { name: "notebooks.json" });

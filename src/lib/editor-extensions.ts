@@ -1,3 +1,4 @@
+import { KnowledgeReference } from "@/lib/knowledge-reference";
 import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
 import Code from "@tiptap/extension-code";
@@ -48,6 +49,7 @@ export function documentExtensions() {
   return [
       StarterKit.configure({ code: false, link: false, underline: false }),
       LegacyCode,
+      KnowledgeReference,
       Underline,
       TextStyle,
       Color,

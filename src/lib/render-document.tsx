@@ -44,6 +44,7 @@ function renderNode(node: DocNode, key: React.Key): React.ReactNode {
   }
   const children = (node.content ?? []).map((child, index) => renderNode(child, `${String(key)}-${index}`));
   switch (node.type) {
+    case "knowledgeReference": return <span key={key} className={`knowledge-reference${node.attrs?.unresolved ? " knowledge-reference-invalid" : ""}`} data-knowledge-reference="entry" data-entry-id={String(node.attrs?.entryId ?? "")}>@{String(node.attrs?.label ?? "失效引用")}</span>;
     case "doc": return <>{children}</>;
     case "paragraph": return <p key={key} style={safeAlignment(node.attrs?.textAlign)}>{children}</p>;
     case "heading": {

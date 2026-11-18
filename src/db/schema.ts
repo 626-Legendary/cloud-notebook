@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text, index } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, index, primaryKey, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
@@ -132,3 +132,24 @@ export type User = typeof users.$inferSelect;
 export type Folder = typeof folders.$inferSelect;
 export type Notebook = typeof notebooks.$inferSelect;
 export type Page = typeof pages.$inferSelect;
+
+export const knowledgeEntries = sqliteTable("knowledge_entries", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(), content: text("content").notNull(), version: integer("version").notNull().default(1),
+  deletedAt: text("deleted_at"), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull()
+}, (table) => ({ ownerIdx: index("knowledge_entries_owner_idx").on(table.userId, table.deletedAt, table.updatedAt) }));
+export const knowledgeNames = sqliteTable("knowledge_names", {
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  normalizedName: text("normalized_name").notNull(), entryId: text("entry_id").notNull().references(() => knowledgeEntries.id, { onDelete: "cascade" }),
+  name: text("name").notNull(), kind: text("kind", { enum: ["title", "alias"] }).notNull()
+}, (table) => ({ pk: primaryKey({ columns: [table.userId, table.normalizedName] }), entryIdx: index("knowledge_names_entry_idx").on(table.entryId) }));
+export const tags = sqliteTable("tags", {
+  id: text("id").primaryKey(), userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(), normalizedName: text("normalized_name").notNull(), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull()
+}, (table) => ({ nameIdx: uniqueIndex("tags_owner_name_idx").on(table.userId, table.normalizedName) }));
+export const contentTags = sqliteTable("content_tags", {
+  tagId: text("tag_id").notNull().references(() => tags.id, { onDelete: "cascade" }),
+  sourceType: text("source_type", { enum: ["page", "entry"] }).notNull(), sourceId: text("source_id").notNull()
+}, (table) => ({ pk: primaryKey({ columns: [table.tagId, table.sourceType, table.sourceId] }), sourceIdx: index("content_tags_source_idx").on(table.sourceType, table.sourceId) }));
+export type KnowledgeEntry = typeof knowledgeEntries.$inferSelect;

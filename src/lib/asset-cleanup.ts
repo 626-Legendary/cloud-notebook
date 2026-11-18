@@ -97,6 +97,7 @@ function getReferenceCounts() {
     FROM pages INNER JOIN notebooks ON notebooks.id = pages.notebook_id
   `, "pages");
   addDocuments("SELECT content FROM note_snapshots", "snapshots");
+  addDocuments("SELECT content, (deleted_at IS NOT NULL) AS trashed FROM knowledge_entries", "pages");
   const covers = sqlite.prepare(`
     SELECT cover_asset_id AS id, (deleted_at IS NOT NULL) AS trashed
     FROM notebooks WHERE cover_asset_id IS NOT NULL

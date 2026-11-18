@@ -56,7 +56,8 @@ export function purgeExpiredTrash(now = Date.now()) {
       const result = sqlite.transaction(() => {
         const pagesResult = removePages.run(cutoff, batchSize);
         const notebooksResult = removeNotebooks.run(cutoff, batchSize);
-        return pagesResult.changes + notebooksResult.changes;
+        const entriesResult = sqlite.prepare("DELETE FROM knowledge_entries WHERE id IN (SELECT id FROM knowledge_entries WHERE deleted_at IS NOT NULL AND deleted_at < ? LIMIT ?)").run(cutoff, batchSize);
+        return pagesResult.changes + notebooksResult.changes + entriesResult.changes;
       }).immediate();
       removed += result;
       if (result < batchSize) return removed;

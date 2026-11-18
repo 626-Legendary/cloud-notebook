@@ -12,7 +12,8 @@ export function extractSearchableText(content: string): string {
       for (const child of node) visit(child);
       return;
     }
-    const value = node as { text?: unknown; content?: unknown };
+    const value = node as { type?: unknown; text?: unknown; content?: unknown; attrs?: { label?: unknown } };
+    if (value.type === "knowledgeReference" && typeof value.attrs?.label === "string") parts.push(value.attrs.label);
     if (typeof value.text === "string") parts.push(value.text);
     if (value.content !== undefined) {
       visit(value.content);

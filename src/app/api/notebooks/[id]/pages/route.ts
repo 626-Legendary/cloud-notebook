@@ -2,6 +2,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db, nowIso, sqlite } from "@/db";
 import { notebooks, pages } from "@/db/schema";
+import { sourceTags } from "@/lib/knowledge";
 import { authError, requireUser } from "@/lib/auth";
 import { assertSameOrigin, jsonError } from "@/lib/http";
 
@@ -23,9 +24,9 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
       id: string; notebookId: string; title: string; sortOrder: number; version: number; pinnedAt: string | null; pinSortOrder: number;
       updatedAt: string; createdAt: string; content: string
     }>;
-    const rows: { id: string; notebookId: string; title: string; sortOrder: number; version: number; pinnedAt: string | null; pinSortOrder: number; updatedAt: string; createdAt: string; summary: string }[] = [];
+    const rows: { id: string; notebookId: string; title: string; sortOrder: number; version: number; pinnedAt: string | null; pinSortOrder: number; updatedAt: string; createdAt: string; summary: string; tagIds: string[] }[] = [];
     for (const { content, ...page } of pageRows) {
-      rows.push({ ...page, summary: summarize(content) });
+      rows.push({ ...page, summary: summarize(content), tagIds: sourceTags(userId, "page", page.id).map((tag) => tag.id) });
     }
     return Response.json({ pages: rows });
   } catch (error) { return jsonError("请先登录", authError(error)); }

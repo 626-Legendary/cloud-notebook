@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     const file = form.get("file");
     if (!(file instanceof File) || !/\.cnf$/i.test(file.name)) return jsonError("请选择 .cnf 笔记本文件");
     if (!file.size || file.size > CNF_LIMITS.compressed) return jsonError("CNF 文件必须为 1 字节至 100 MB", 413);
-    const notebook = await importNotebookCnf(userId, Buffer.from(await file.arrayBuffer()));
+    const notebook = await importNotebookCnf(userId, Buffer.from(await file.arrayBuffer()), form.get("reuseExisting") === "true");
     return Response.json({ notebook }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (error instanceof CnfError) return jsonError(error.message, error.status);

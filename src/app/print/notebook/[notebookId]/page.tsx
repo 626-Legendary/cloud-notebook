@@ -4,6 +4,7 @@ import { PrintDocument } from "@/components/print-document";
 import { db } from "@/db";
 import { notebooks, pages } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { resolveKnowledgeContent } from "@/lib/knowledge";
 import { renderDocument } from "@/lib/render-document";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ export default async function PrintNotebook({ params }: { params: Promise<{ note
     <h1 className="print-notebook-title">{notebook.title}</h1>
     {notebookPages.map((page) => <section className="print-page" key={page.id}>
       <h2 className="print-page-title">{page.title}</h2>
-      <article>{renderDocument(page.content)}</article>
+      <article>{renderDocument(resolveKnowledgeContent(session.userId, page.content))}</article>
     </section>)}
   </main></PrintDocument>;
 }

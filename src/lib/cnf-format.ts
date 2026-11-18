@@ -2,11 +2,12 @@ import { createHash } from "node:crypto";
 import archiver from "archiver";
 import { getSchema, type JSONContent } from "@tiptap/core";
 import { z } from "zod";
+import { documentReferences, knowledgeReferenceAttributes, normalizeKnowledgeName } from "@/lib/knowledge-document";
 import { documentExtensions } from "@/lib/editor-extensions";
 import { detectImage } from "@/lib/images";
 import { readZipEntries } from "@/lib/zip-reader";
 
-export const CNF_LIMITS = { compressed: 100 * 1024 * 1024, expanded: 200 * 1024 * 1024, image: 10 * 1024 * 1024, entries: 20_002 };
+export const CNF_LIMITS = { compressed: 100 * 1024 * 1024, expanded: 200 * 1024 * 1024, image: 10 * 1024 * 1024, entries: 20_003 };
 export class CnfError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
@@ -24,6 +25,12 @@ export const cnfNotebookSchema = z.object({
   pages: z.array(z.object({ ...metadata, version: z.number().int().positive(), content: z.record(z.unknown()) }).strict()).max(10_000),
   snapshots: z.array(z.object({ id: uuid, pageId: uuid, title: z.string().min(1).max(200), content: z.record(z.unknown()), createdAt: timestamp }).strict()).max(50_000)
 }).strict();
+export const cnfKnowledgeSchema = z.object({
+  entries: z.array(z.object({ id: uuid, title: z.string().trim().min(1).max(120), aliases: z.array(z.string().trim().min(1).max(120)).max(50), content: z.record(z.unknown()), createdAt: timestamp, updatedAt: timestamp, tagIds: z.array(uuid).max(100) }).strict()).max(10_000),
+  tags: z.array(z.object({ id: uuid, name: z.string().trim().min(1).max(60) }).strict()).max(10_000),
+  pageTags: z.array(z.object({ pageId: uuid, tagIds: z.array(uuid).max(100) }).strict()).max(10_000)
+}).strict();
+export type CnfKnowledge = z.infer<typeof cnfKnowledgeSchema>;
 const assetSchema = z.object({
   id: uuid, path: z.string().regex(/^assets\/[0-9a-f-]{36}\.(png|jpg|webp|gif)$/i),
   mimeType: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]),
@@ -31,10 +38,10 @@ const assetSchema = z.object({
   createdAt: timestamp, sha256: digest
 }).strict();
 export const cnfManifestSchema = z.object({
-  format: z.literal("cloud-notebook-file"), formatVersion: z.literal(1),
+  format: z.literal("cloud-notebook-file"), formatVersion: z.literal(2), scope: z.enum(["notebook", "page", "knowledge"]),
   applicationVersion: z.string().min(1).max(40), exportedAt: timestamp, notebookId: uuid,
-  compatibility: z.object({ editor: z.literal("tiptap-json"), schemaVersion: z.literal(1), assets: z.literal("relative-v1") }).strict(),
-  notebookSha256: digest, pageCount: z.number().int().nonnegative(), snapshotCount: z.number().int().nonnegative(),
+  compatibility: z.object({ editor: z.literal("tiptap-json"), schemaVersion: z.literal(2), assets: z.literal("relative-v1") }).strict(),
+  notebookSha256: digest, knowledgeSha256: digest, pageCount: z.number().int().nonnegative(), snapshotCount: z.number().int().nonnegative(),
   assets: z.array(assetSchema).max(20_000)
 }).strict();
 export type CnfNotebook = z.infer<typeof cnfNotebookSchema>;
@@ -59,7 +66,7 @@ export function mapDocumentAssets(document: unknown, resolve: (value: string, ke
 
 let schema: ReturnType<typeof getSchema> | undefined;
 /** Reject capabilities this editor would drop; never normalize the stored JSON. */
-export function validateEditableDocument(document: Record<string, unknown>) {
+export function validateEditableDocument(document: Record<string, unknown>, portableImages = true) {
   schema ??= getSchema(documentExtensions());
   const currentSchema = schema;
   const check = (value: unknown, isMark = false): void => {
@@ -88,9 +95,10 @@ export function validateEditableDocument(document: Record<string, unknown>) {
       }
       if (attrs.colwidth != null && (!Array.isArray(attrs.colwidth) || attrs.colwidth.length !== (attrs.colspan ?? 1) || attrs.colwidth.some((width: unknown) => typeof width !== "number" || !Number.isFinite(width) || width < 0 || width > 100_000))) throw new CnfError("表格列宽属性无效");
     }
+    if (node.type === "knowledgeReference" && !knowledgeReferenceAttributes.safeParse(node.attrs).success) throw new CnfError("知识库引用元数据无效");
     if (node.type === "image") {
       const attrs = node.attrs as Record<string, unknown> | undefined;
-      if (typeof attrs?.src !== "string" || !/^assets\//.test(attrs.src)) throw new CnfError("CNF 图片必须包含在文件中，不能依赖外部地址");
+      if (typeof attrs?.src !== "string" || (portableImages ? !/^assets\//.test(attrs.src) : !/^(?:\/uploads\/notes\/[0-9a-f-]{36}(?:[?#].*)?|https?:\/\/)/i.test(attrs.src))) throw new CnfError("CNF 图片必须包含在文件中，不能依赖外部地址");
     }
   };
   check(document);
@@ -129,9 +137,24 @@ export async function parseCnf(buffer: Buffer) {
   };
   const manifestResult = cnfManifestSchema.safeParse(json("manifest.json"));
   const notebookResult = cnfNotebookSchema.safeParse(json("notebook.json"));
+  const knowledgeResult = cnfKnowledgeSchema.safeParse(json("knowledge.json"));
   if (!manifestResult.success) throw new CnfError("CNF 格式标识、版本或兼容信息不受支持");
   if (!notebookResult.success) throw new CnfError("CNF 笔记本数据或元信息无效");
-  const manifest = manifestResult.data, notebook = notebookResult.data;
+  if (!knowledgeResult.success) throw new CnfError("CNF 知识库或标签数据无效");
+  const manifest = manifestResult.data, notebook = notebookResult.data, knowledge = knowledgeResult.data;
+  if (manifest.knowledgeSha256 !== sha256(entries.get("knowledge.json")!)) throw new CnfError("知识库校验和不一致");
+  if (manifest.scope === "knowledge" && (notebook.pages.length || notebook.snapshots.length || notebook.coverAssetId)) throw new CnfError("知识库文件不能包含笔记本资源");
+  if (manifest.scope === "page" && notebook.pages.length !== 1) throw new CnfError("页面文件必须包含一个页面");
+  const entryIds = new Set<string>(), names = new Set<string>(), tagIds = new Set<string>(), tagNames = new Set<string>();
+  for (const entry of knowledge.entries) {
+    if (entryIds.has(entry.id)) throw new CnfError("词条 ID 重复"); entryIds.add(entry.id);
+    for (const name of [entry.title, ...entry.aliases]) { const key = normalizeKnowledgeName(name); if (!key || names.has(key)) throw new CnfError("词条正式名称或别名冲突"); names.add(key); }
+    if (documentReferences(entry.content).some((ref) => ref.entryId === entry.id)) throw new CnfError("不能导入指向词条自身的新引用");
+  }
+  for (const tag of knowledge.tags) { const key = normalizeKnowledgeName(tag.name); if (!key || tagIds.has(tag.id) || tagNames.has(key)) throw new CnfError("标签名称或标识重复"); tagIds.add(tag.id); tagNames.add(key); }
+  for (const item of [...knowledge.entries, ...knowledge.pageTags]) if (item.tagIds.some((id) => !tagIds.has(id)) || new Set(item.tagIds).size !== item.tagIds.length) throw new CnfError("标签关联无效");
+  const taggedPages = new Set<string>();
+  for (const item of knowledge.pageTags) { if (!notebook.pages.some((page) => page.id === item.pageId) || taggedPages.has(item.pageId)) throw new CnfError("页面标签关联无效"); taggedPages.add(item.pageId); }
   if (manifest.notebookId !== notebook.id || manifest.pageCount !== notebook.pages.length || manifest.snapshotCount !== notebook.snapshots.length || manifest.notebookSha256 !== sha256(entries.get("notebook.json")!)) throw new CnfError("CNF 清单、校验和与正文不一致");
   const ids = new Set<string>(), paths = new Set<string>();
   for (const asset of manifest.assets) {
@@ -140,11 +163,11 @@ export async function parseCnf(buffer: Buffer) {
     const bytes = entries.get(asset.path);
     if (!bytes || bytes.length !== asset.size || bytes.length > CNF_LIMITS.image || sha256(bytes) !== asset.sha256 || detectImage(bytes)?.mime !== asset.mimeType) throw new CnfError(`CNF 图片损坏或类型不匹配：${asset.originalName}`);
   }
-  if (entries.size !== paths.size + 2 || [...entries.keys()].some((key) => !paths.has(key) && !["manifest.json", "notebook.json"].includes(key))) throw new CnfError("CNF 包含未声明的文件");
+  if (entries.size !== paths.size + 3 || [...entries.keys()].some((key) => !paths.has(key) && !["manifest.json", "notebook.json", "knowledge.json"].includes(key))) throw new CnfError("CNF 包含未声明的文件");
   const pageIds = new Set(notebook.pages.map((page) => page.id));
   if (pageIds.size !== notebook.pages.length || new Set(notebook.snapshots.map((snapshot) => snapshot.id)).size !== notebook.snapshots.length) throw new CnfError("CNF 包含重复页面或历史版本");
   if (notebook.coverAssetId && !ids.has(notebook.coverAssetId)) throw new CnfError("CNF 封面引用不存在");
-  for (const page of [...notebook.pages, ...notebook.snapshots]) {
+  for (const page of [...notebook.pages, ...notebook.snapshots, ...knowledge.entries]) {
     if ("pageId" in page && !pageIds.has(page.pageId)) throw new CnfError("CNF 历史版本引用无效");
     mapDocumentAssets(page.content, (value, key) => {
       if (key === "assetId" && !ids.has(value)) throw new CnfError("CNF 正文资源引用不存在");
@@ -162,5 +185,5 @@ export async function parseCnf(buffer: Buffer) {
     };
     checkImages(page.content);
   }
-  return { manifest, notebook, entries };
+  return { manifest, notebook, knowledge, entries };
 }

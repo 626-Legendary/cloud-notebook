@@ -6,6 +6,9 @@ import { db, nowIso, sqlite } from "@/db";
 import { folders, users } from "@/db/schema";
 import { detectImage, extensionForMime } from "@/lib/images";
 import { readZipEntries } from "@/lib/zip-reader";
+import { cnfKnowledgeSchema, validateEditableDocument } from "@/lib/cnf-format";
+import { mapKnowledgeReferences, normalizeKnowledgeName } from "@/lib/knowledge-document";
+import { replaceEntryNames } from "@/lib/knowledge";
 import { safeFileName } from "@/lib/filename";
 
 const uuid = z.string().uuid();
@@ -36,7 +39,8 @@ export async function restoreUserArchive(targetUserId: string, compressed: Buffe
     return JSON.parse(entry.toString("utf8")) as unknown;
   };
   const manifest = z.object({
-    formatVersion: z.literal(1),
+    formatVersion: z.union([z.literal(1), z.literal(2)]),
+    knowledgeCount: z.number().int().nonnegative().optional(), tagCount: z.number().int().nonnegative().optional(),
     folderCount: z.number().int().nonnegative(),
     notebookCount: z.number().int().nonnegative(),
     pageCount: z.number().int().nonnegative(),
@@ -49,6 +53,18 @@ export async function restoreUserArchive(targetUserId: string, compressed: Buffe
   const importedPages = pageSchema.parse(json("pages.json"));
   const importedSnapshots = snapshotSchema.parse(json("snapshots.json"));
   const importedAssets = assetSchema.parse(json("assets.json"));
+  const knowledge = manifest.data.formatVersion === 2 ? cnfKnowledgeSchema.parse(json("knowledge.json")) : { entries: [], tags: [], pageTags: [] };
+  if (manifest.data.formatVersion === 2 && (manifest.data.knowledgeCount !== knowledge.entries.length || manifest.data.tagCount !== knowledge.tags.length)) throw new Error("知识库备份清单与数据不一致");
+  const entryIds = new Map<string, string>(), tagIds = new Map<string, string>();
+  const names = new Set<string>(), tagNames = new Set<string>(), pageIdSet = new Set(importedPages.map((page) => page.id));
+  for (const entry of knowledge.entries) {
+    if (entryIds.has(entry.id)) throw new Error("备份中的词条 ID 重复"); entryIds.set(entry.id, crypto.randomUUID()); validateEditableDocument(entry.content, false);
+    for (const name of [entry.title,...entry.aliases]) { const normalized=normalizeKnowledgeName(name); if (!normalized || names.has(normalized)) throw new Error("备份中词条名称或别名冲突"); names.add(normalized); }
+  }
+  for (const tag of knowledge.tags) { const normalized=normalizeKnowledgeName(tag.name); if (!normalized || tagIds.has(tag.id) || tagNames.has(normalized)) throw new Error("备份标签名称或标识重复"); tagNames.add(normalized); tagIds.set(tag.id, crypto.randomUUID()); }
+  for (const item of [...knowledge.entries,...knowledge.pageTags]) if (item.tagIds.some((id) => !tagIds.has(id))) throw new Error("备份标签关联不存在");
+  for (const item of knowledge.pageTags) if (!pageIdSet.has(item.pageId)) throw new Error("备份标签页面不存在");
+
   if (
     manifest.data.folderCount !== importedFolders.length ||
     manifest.data.notebookCount !== importedNotebooks.length ||
@@ -96,8 +112,9 @@ export async function restoreUserArchive(targetUserId: string, compressed: Buffe
       if (!newId) throw new Error("备份中的图片关联无效");
       const storagePath = `${newId}.${extension}`;
       const destination = path.join(uploadDirectory, storagePath);
-      await fs.writeFile(destination, bytes, { flag: "wx", mode: 0o600 });
+      const handle = await fs.open(destination, "wx", 0o600);
       createdFiles.push(destination);
+      try { await handle.writeFile(bytes); } finally { await handle.close(); }
       assetRows.push({
         id: newId, oldId: asset.id, mimeType: asset.mimeType,
         originalName: safeFileName(path.basename(asset.originalName), 200),
@@ -114,6 +131,17 @@ export async function restoreUserArchive(targetUserId: string, compressed: Buffe
       }
       const insertAsset = sqlite.prepare("INSERT INTO assets (id,user_id,storage_path,mime_type,original_name,size,created_at) VALUES (?,?,?,?,?,?,?)");
       for (const asset of assetRows) insertAsset.run(asset.id, targetUserId, asset.storagePath, asset.mimeType, asset.originalName, asset.size, insertedAt);
+      for (const entry of knowledge.entries) {
+        const id = entryIds.get(entry.id)!;
+        sqlite.prepare("INSERT INTO knowledge_entries (id,user_id,title,content,created_at,updated_at) VALUES (?,?,?,?,?,?)").run(id, targetUserId, entry.title, rewriteAssets(JSON.stringify(entry.content), assetIds, entryIds), entry.createdAt, entry.updatedAt);
+        replaceEntryNames(targetUserId, id, entry.title, entry.aliases);
+      }
+      for (const tag of knowledge.tags) {
+        const normalized=normalizeKnowledgeName(tag.name);
+        const existing=sqlite.prepare("SELECT id FROM tags WHERE user_id=? AND normalized_name=?").get(targetUserId,normalized) as { id: string } | undefined;
+        if (existing) tagIds.set(tag.id,existing.id);
+        else sqlite.prepare("INSERT INTO tags (id,user_id,name,normalized_name,created_at,updated_at) VALUES (?,?,?,?,?,?)").run(tagIds.get(tag.id),targetUserId,tag.name,normalized,insertedAt,insertedAt);
+      }
       const insertNotebook = sqlite.prepare("INSERT INTO notebooks (id,user_id,folder_id,title,cover_asset_id,sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)");
       for (const notebook of importedNotebooks) {
         const coverId = notebook.coverAssetId ? assetIds.get(notebook.coverAssetId) ?? null : null;
@@ -121,25 +149,28 @@ export async function restoreUserArchive(targetUserId: string, compressed: Buffe
       }
       const insertPage = sqlite.prepare("INSERT INTO pages (id,user_id,notebook_id,title,content,sort_order,version,created_at,updated_at) VALUES (?,?,?,?,?,?,1,?,?)");
       for (const page of importedPages) {
-        const content = rewriteAssets(page.content, assetIds);
+        const content = rewriteAssets(page.content, assetIds, entryIds);
         insertPage.run(pageIds.get(page.id), targetUserId, notebookIds.get(page.notebookId), page.title, content, page.sortOrder, page.createdAt, page.updatedAt);
       }
       const insertSnapshot = sqlite.prepare("INSERT INTO note_snapshots (id,user_id,page_id,title,content,created_at) VALUES (?,?,?,?,?,?)");
       for (const snapshot of importedSnapshots) {
         const mappedPageId = pageIds.get(snapshot.pageId);
         if (!mappedPageId) throw new Error("备份中的历史版本页面引用无效");
-        insertSnapshot.run(crypto.randomUUID(), targetUserId, mappedPageId, snapshot.title, rewriteAssets(snapshot.content, assetIds), snapshot.createdAt);
+        insertSnapshot.run(crypto.randomUUID(), targetUserId, mappedPageId, snapshot.title, rewriteAssets(snapshot.content, assetIds, entryIds), snapshot.createdAt);
       }
+      const assign=(kind: string,id: string,ids: string[]) => { for(const tag of new Set(ids)) sqlite.prepare("INSERT OR IGNORE INTO content_tags (tag_id,source_type,source_id) VALUES (?,?,?)").run(tagIds.get(tag),kind,id); };
+      for (const entry of knowledge.entries) assign("entry",entryIds.get(entry.id)!,entry.tagIds);
+      for (const item of knowledge.pageTags) assign("page",pageIds.get(item.pageId)!,item.tagIds);
     });
     insertAll();
-    return { folders: importedFolders.filter((folder) => !folder.isDefault).length, notebooks: importedNotebooks.length, pages: importedPages.length, snapshots: importedSnapshots.length, assets: assetRows.length };
+    return { entries: knowledge.entries.length, tags: knowledge.tags.length, folders: importedFolders.filter((folder) => !folder.isDefault).length, notebooks: importedNotebooks.length, pages: importedPages.length, snapshots: importedSnapshots.length, assets: assetRows.length };
   } catch (error) {
     await Promise.all(createdFiles.map((file) => fs.rm(file, { force: true })));
     throw error;
   }
 }
 
-function rewriteAssets(content: string, assetIds: Map<string, string>) {
+function rewriteAssets(content: string, assetIds: Map<string, string>, entryIds: Map<string, string>) {
   let document: unknown;
   try { document = JSON.parse(content); } catch { throw new Error("备份中的页面内容不是有效 JSON"); }
   if (!document || typeof document !== "object" || (document as { type?: string }).type !== "doc") throw new Error("备份中的页面内容格式无效");
@@ -161,7 +192,7 @@ function rewriteAssets(content: string, assetIds: Map<string, string>) {
     if (item.content) item.content = visit(item.content);
     return item;
   };
-  return JSON.stringify(visit(document));
+  return JSON.stringify(mapKnowledgeReferences(visit(document), (id) => entryIds.get(id) ?? id));
 }
 
 function extractAssetId(value: unknown) {

@@ -115,3 +115,51 @@ it("validates checksums, unsupported versions/nodes/attributes, duplicate pages 
   await expect(importNotebookCnf(other, Buffer.from("not a ZIP"))).rejects.toThrow("压缩结构");
   expect(state.sqlite.prepare("SELECT count(*) AS n FROM notebooks WHERE user_id=?").get(other)).toEqual({ n: 0 });
 });
+
+it("CNF2 page/notebook scopes pack only directly referenced entries and remap labels, tags and unresolved targets", async () => {
+  const { createEntry, getEntry, updateEntry, checkReferences } = await import("@/lib/knowledge");
+  const { applyTagAction, listTags } = await import("@/lib/tags");
+  const { exportPageCnf } = await import("@/lib/cnf");
+  const a = createEntry(owner, { title: "操作系统", aliases: ["OS"] }), b = createEntry(owner, { title: "虚拟内存", aliases: [] });
+  const reference = (id: string, label: string) => ({ type: "knowledgeReference", attrs: { entryId: id, label, referenceType: "entry" } });
+  updateEntry(owner, a.id, { version: a.version, content: { type: "doc", content: [{ type: "paragraph", content: [reference(b.id, b.title)] }, { type: "image", attrs: { assetId, src: `/uploads/notes/${assetId}` } }] } });
+  const content = { type: "doc", content: [{ type: "paragraph", content: [reference(a.id, a.title), reference(a.id, a.title)] }] };
+  state.sqlite.prepare("UPDATE pages SET content=? WHERE id=?").run(JSON.stringify(content), firstPage);
+  applyTagAction(owner, { action: "create", name: "学习" }); const tag = listTags(owner)[0];
+  applyTagAction(owner, { action: "assign", sourceType: "page", sourceId: firstPage, tagIds: [tag.id] }); applyTagAction(owner, { action: "assign", sourceType: "entry", sourceId: a.id, tagIds: [tag.id] });
+  const archive = await parseCnf((await exportPageCnf(owner, firstPage)).bytes);
+  expect(archive.manifest.formatVersion).toBe(2); expect(archive.manifest.scope).toBe("page"); expect(archive.notebook.pages).toHaveLength(1);
+  expect(archive.knowledge.entries.map((item) => item.id)).toEqual([a.id]); expect(archive.manifest.assets).toHaveLength(1);
+  const imported = await importNotebookCnf(other, (await exportPageCnf(owner, firstPage)).bytes);
+  const next = await parseCnf((await exportNotebookCnf(other, imported.id)).bytes);
+  expect(next.knowledge.entries).toHaveLength(1); expect(next.knowledge.entries[0].id).not.toBe(a.id); expect(next.knowledge.entries[0].aliases).toEqual(["OS"]);
+  expect(next.knowledge.pageTags[0].tagIds[0]).not.toBe(tag.id); expect(next.knowledge.tags[0].name).toBe("学习");
+  const unresolved = checkReferences(other); expect(unresolved.statistics.validReferences).toBe(2); expect(unresolved.statistics.invalidReferences).toBe(1);
+  expect(unresolved.issues[0].entryId).toBe(b.id);
+  // Imported unresolved references remain editable, without granting access to the original owner.
+  const importedEntry = next.knowledge.entries[0]; expect(() => updateEntry(other, importedEntry.id, { version: 1, content: getEntry(other, importedEntry.id).content })).not.toThrow();
+});
+
+it("independent knowledge export includes unreferenced entries and restores cycles without recursive packing", async () => {
+  const { createEntry, updateEntry, listEntries, checkReferences } = await import("@/lib/knowledge"); const { exportKnowledgeCnf } = await import("@/lib/cnf");
+  const a = createEntry(owner, { title: "A", aliases: ["AA"] }), b = createEntry(owner, { title: "B", aliases: [] }); createEntry(owner, { title: "没有被引用的知识", aliases: [] });
+  const document = (id: string) => ({ type: "doc", content: [{ type: "paragraph", content: [{ type: "knowledgeReference", attrs: { entryId: id, label: "原名称", referenceType: "entry" } }] }] });
+  updateEntry(owner, a.id, { version: 1, content: document(b.id) }); updateEntry(owner, b.id, { version: 1, content: document(a.id) });
+  const exported = await exportKnowledgeCnf(owner), parsed = await parseCnf(exported.bytes); expect(parsed.manifest.scope).toBe("knowledge"); expect(parsed.knowledge.entries).toHaveLength(3);
+  const before = state.sqlite.prepare("SELECT COUNT(*) AS n FROM notebooks WHERE user_id=?").get(other);
+  const result = await importNotebookCnf(other, exported.bytes); expect(result.kind).toBe("knowledge"); expect(listEntries(other)).toHaveLength(3); expect(checkReferences(other).statistics).toEqual({ entries: 3, validReferences: 2, invalidReferences: 0, unreferencedEntries: 1 });
+  expect(state.sqlite.prepare("SELECT COUNT(*) AS n FROM notebooks WHERE user_id=?").get(other)).toEqual(before);
+  await expect(importNotebookCnf(other, exported.bytes)).rejects.toThrow("冲突"); expect(listEntries(other)).toHaveLength(3);
+  const reused = await importNotebookCnf(other, exported.bytes, true); expect(reused.reusedEntries).toBe(3); expect(listEntries(other)).toHaveLength(3);
+});
+
+it("rejects corrupt knowledge data and atomically rolls back entry failures and written resource files", async () => {
+  const { createEntry } = await import("@/lib/knowledge"); const { exportKnowledgeCnf } = await import("@/lib/cnf");
+  createEntry(owner, { title: "带图片词条", aliases: [], content: nativeDocument(assetId) }); const bytes = (await exportKnowledgeCnf(owner)).bytes;
+  const archive = await parseCnf(bytes), entries = new Map(archive.entries); entries.set("knowledge.json", Buffer.from("{}"));
+  await expect(importNotebookCnf(other, await createCnfZip(entries))).rejects.toThrow();
+  const files = fs.readdirSync(path.join(directory, "data/uploads/notes"));
+  state.sqlite.exec(`CREATE TRIGGER fail_knowledge BEFORE INSERT ON knowledge_entries WHEN NEW.user_id='${other}' BEGIN SELECT RAISE(ABORT, 'synthetic knowledge failure'); END;`);
+  await expect(importNotebookCnf(other, bytes)).rejects.toThrow("synthetic knowledge failure");
+  expect(fs.readdirSync(path.join(directory, "data/uploads/notes"))).toEqual(files); expect(state.sqlite.prepare("SELECT COUNT(*) AS n FROM knowledge_entries WHERE user_id=?").get(other)).toEqual({ n: 0 });
+});

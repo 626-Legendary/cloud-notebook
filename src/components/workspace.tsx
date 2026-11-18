@@ -1,5 +1,7 @@
 "use client";
 
+import { KnowledgeDialogs } from "@/components/knowledge-dialogs";
+import { KnowledgeLibrary, refreshKnowledge, downloadKnowledgeFile } from "@/components/knowledge-library";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -45,7 +47,7 @@ const PageEditor = dynamic(() => import("@/components/page-editor").then((module
 
 type FolderItem = Pick<FolderRecord, "id" | "name" | "isDefault" | "sortOrder">;
 type NotebookItem = Pick<Notebook, "id" | "folderId" | "title" | "coverAssetId" | "updatedAt" | "pinnedAt" | "pinSortOrder">;
-type PageItem = Pick<Page, "id" | "notebookId" | "title" | "sortOrder" | "version" | "updatedAt" | "createdAt" | "pinnedAt" | "pinSortOrder"> & { summary?: string };
+type PageItem = Pick<Page, "id" | "notebookId" | "title" | "sortOrder" | "version" | "updatedAt" | "createdAt" | "pinnedAt" | "pinSortOrder"> & { summary?: string; tagIds?: string[] };
 type SessionUser = { id: string; username: string; createdAt: string; role: string };
 type Settings = { theme: "system" | "light" | "dark"; autoSaveMode: string; sidebarCollapsed: boolean };
 type SnapshotItem = { id: string; title: string; createdAt: string };
@@ -82,6 +84,9 @@ export function Workspace({ appVersion }: { appVersion: string }) {
     const timer = setTimeout(() => { try { localStorage.setItem(pagesWidthStorageKey, String(pagesPanelWidth)); } catch { /* Layout remains usable without browser storage. */ } }, 150);
     return () => clearTimeout(timer);
   }, [pagesPanelWidth]);
+  const [knowledgeOpen, setKnowledgeOpen] = useState(false);
+  const [pageTagFilter, setPageTagFilter] = useState("");
+  const [globalTags, setGlobalTags] = useState<{ id: string; name: string }[]>([]);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const navigationRestored = useRef(false);
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -261,6 +266,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
   }
 
   async function openNotebook(notebook: NotebookItem) {
+    setKnowledgeOpen(false);
     const sequence = ++navigationSequence.current;
     try {
       if (selectedPage) await flushPageEdits(selectedPage.id);
@@ -279,6 +285,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
   }
 
   async function goHome() {
+    setKnowledgeOpen(false);
     try {
       if (selectedPage) await flushPageEdits(selectedPage.id);
       navigationSequence.current++;
@@ -334,14 +341,22 @@ export function Workspace({ appVersion }: { appVersion: string }) {
     transferRef.current = true; setTransferring(true);
     try {
       const form = new FormData(); form.set("file", file);
-      const result = await requestJson<{ notebook: { id: string; title: string } }>("/api/notebooks/import", { method: "POST", body: form });
-      await loadWorkspace();
-      notify.success(`已导入笔记本「${result.notebook.title}」`);
+      let response = await fetch("/api/notebooks/import", { method: "POST", body: form });
+      if (response.status === 409) {
+        const conflict = await response.json();
+        if (!await confirm(conflict.error + "。是否复用已有词条？不会覆盖其正文或别名。", "导入词条冲突")) return;
+        form.set("reuseExisting", "true"); response = await fetch("/api/notebooks/import", { method: "POST", body: form });
+      }
+      const result = await response.json(); if (!response.ok) throw new Error(result.error ?? "导入失败");
+      await loadWorkspace(); refreshKnowledge();
+      if (result.notebook.kind === "knowledge") setKnowledgeOpen(true);
+      notify.success(result.notebook.kind === "knowledge" ? "知识库导入完成" : `已导入笔记本「${result.notebook.title}」`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "笔记本导入失败"); }
     finally { transferRef.current = false; setTransferring(false); }
   }
 
   async function openPage(id: string) {
+    setKnowledgeOpen(false);
     if (selectedPage && selectedPage.id !== id) {
       try { await flushPageEdits(selectedPage.id); } catch (cause) { setError(cause instanceof Error ? cause.message : "请先保存当前页面"); return; }
     }
@@ -635,6 +650,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
   }
 
   async function openTrash() {
+    setKnowledgeOpen(false);
     try {
       const result = await requestJson<{ trash: TrashItem[] }>("/api/trash");
       setTrashItems(result.trash);
@@ -770,15 +786,45 @@ export function Workspace({ appVersion }: { appVersion: string }) {
   }
 
 
+  useEffect(() => {
+    const controller = new AbortController();
+    const load = () => {
+      void requestJson<{ tags: { id: string; name: string }[] }>("/api/tags", { signal: controller.signal }).then((data) => { if (!controller.signal.aborted) setGlobalTags(data.tags); }).catch(() => {});
+      if (selectedNotebook) void requestJson<{ pages: PageItem[] }>(`/api/notebooks/${selectedNotebook.id}/pages`, { signal: controller.signal }).then((data) => { if (!controller.signal.aborted) setPages(data.pages); }).catch(() => {});
+    };
+    window.addEventListener("cloud-notebook:tags-change", load); load();
+    return () => { controller.abort(); window.removeEventListener("cloud-notebook:tags-change", load); };
+  }, [selectedNotebook]);
+
+  async function navigateKnowledgeSource(id: string, target?: string) {
+    try {
+      if (selectedPage) await flushPageEdits(selectedPage.id);
+      const { page } = await requestJson<{ page: Page }>(`/api/pages/${id}`);
+      const notebook = notebooks.find((item) => item.id === page.notebookId);
+      if (!notebook) throw new Error("来源笔记本不存在");
+      const result = await requestJson<{ pages: PageItem[] }>(`/api/notebooks/${notebook.id}/pages`);
+      setKnowledgeOpen(false); setTrashOpen(false); setSelectedNotebook(notebook); setPages(result.pages); setSelectedPage(page); setEditorReset((value) => value + 1); setShowPages(false); setShowSidebar(false);
+      const url = new URL(window.location.href); url.searchParams.set("page", page.id); url.searchParams.set("notebook", notebook.id); window.history.pushState(null, "", url);
+      if (target) {
+        for (let index = 0; index < 30; index++) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          const node = document.querySelector<HTMLElement>(`.notebook-editor [data-entry-id="${window.CSS.escape(target)}"]`);
+          if (node) { node.scrollIntoView({ block: "center", behavior: "smooth" }); node.classList.add("knowledge-reference-locate"); setTimeout(() => node.classList.remove("knowledge-reference-locate"), 1600); break; }
+        }
+      }
+    } catch (error) { setError(error instanceof Error ? error.message : "无法打开来源页面"); }
+  }
+
   const visiblePages = useMemo(() => {
-    const filtered = pages;
+    const filtered = pageTagFilter ? pages.filter((page) => page.tagIds?.includes(pageTagFilter)) : pages;
     if (sortMode === "updated") return [...filtered].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     if (sortMode === "created") return [...filtered].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     if (sortMode === "title") return [...filtered].sort((a, b) => a.title.localeCompare(b.title, "zh-CN"));
     return filtered;
-  }, [pages, sortMode]);
+  }, [pages, sortMode, pageTagFilter]);
 
   function navigateFolder(folderId: string) {
+    setKnowledgeOpen(false);
     clearPageLocation();
     setTrashOpen(false);
     setExpandedFolders((current) => new Set(current).add(folderId));
@@ -794,13 +840,14 @@ export function Workspace({ appVersion }: { appVersion: string }) {
     setSelectedPage((current) => current?.id === page.id ? { ...current, ...page } : current);
   }
 
-  const isHome = !selectedNotebook && !trashOpen;
+  const isHome = knowledgeOpen || (!selectedNotebook && !trashOpen);
 
   if (!workspaceReady) return <WorkspaceLoading />;
 
   return (
     <main style={{ "--pages-panel-width": `${pagesPanelWidth}px` } as CSSProperties} className={`workspace ${isHome ? "notebook-home-layout" : ""} ${settings.sidebarCollapsed ? "sidebar-collapsed" : ""} ${showPages ? "show-pages" : ""} ${showSidebar ? "show-sidebar" : ""}`}>
       <LogoutProgress pending={loggingOut} />
+      <KnowledgeDialogs autoSaveMode={settings.autoSaveMode} activePageId={selectedPage?.id} onNavigatePage={navigateKnowledgeSource} onRepaired={async (id, type) => { if (type === "page" && selectedPage?.id === id) { const { page } = await requestJson<{ page: Page }>(`/api/pages/${id}`); setSelectedPage(page); setEditorReset((value) => value + 1); } }} />
       <aside className="sidebar">
         <div className="brand-row">
           <a className="brand-home-link" href="/app" onClick={(event) => { if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); void goHome(); }}><span className="brand-small"><Image src="/icon.png" alt="" width={24} height={24} unoptimized /></span><span>Cloud Notebook</span></a>
@@ -889,6 +936,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
             </section>;
           })}
         </ScrollArea>
+        <button className={`sidebar-knowledge-button ${knowledgeOpen ? "active" : ""}`} type="button" aria-current={knowledgeOpen ? "page" : undefined} onClick={() => void (async () => { try { if (selectedPage) await flushPageEdits(selectedPage.id); setKnowledgeOpen(true); setTrashOpen(false); setShowSidebar(false); refreshKnowledge(); } catch (error) { setError(error instanceof Error ? error.message : "请先保存页面"); } })()}><BookOpen size={15} />知识库</button>
         <button className={`sidebar-trash-button ${trashOpen ? "active" : ""}`} aria-current={trashOpen ? "page" : undefined} type="button" onClick={() => void openTrash()}><Trash2 size={15} />垃圾箱</button>
         <footer className="sidebar-footer">
           <span className="user-avatar">{user?.username?.slice(0, 1).toLocaleUpperCase() ?? "U"}</span>
@@ -897,6 +945,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
             <DropdownMenu.Trigger asChild><button className="icon-button" title="账号与设置" aria-label="账号与设置"><Settings size={17} /></button></DropdownMenu.Trigger>
             <DropdownMenu.Portal><DropdownMenu.Content className="menu-content" align="end" sideOffset={5}>
               <DropdownMenu.Label className="settings-menu-label">偏好设置</DropdownMenu.Label>
+              <DropdownMenu.Sub><DropdownMenu.SubTrigger className="menu-item"><Settings size={16} />数据管理<MenuChevron className="menu-chevron" size={14} /></DropdownMenu.SubTrigger><DropdownMenu.Portal><DropdownMenu.SubContent className="menu-content" sideOffset={6}><DropdownMenu.Item className="menu-item" onSelect={() => window.dispatchEvent(new Event("cloud-notebook:reference-check"))}>引用检查</DropdownMenu.Item></DropdownMenu.SubContent></DropdownMenu.Portal></DropdownMenu.Sub>
               <DropdownMenu.Sub>
                 <DropdownMenu.SubTrigger className="menu-item"><Sun size={16} />外观<MenuChevron className="menu-chevron" size={14} /></DropdownMenu.SubTrigger>
                 <DropdownMenu.Portal><DropdownMenu.SubContent className="menu-content" sideOffset={6}>
@@ -962,6 +1011,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
               <strong className="text-ui-body" title={selectedNotebook.title}>{selectedNotebook.title}</strong>
               <span>{pages.length} 个页面</span>
             </div>
+            <DropdownMenu.Root><DropdownMenu.Trigger asChild><button type="button" className="button-outline page-tag-filter" aria-label="页面标签筛选">{globalTags.find((tag) => tag.id === pageTagFilter)?.name ?? "全部标签"}<ChevronDown size={13} /></button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="dropdown-menu" side="bottom" align="start" sideOffset={6}><DropdownMenu.RadioGroup value={pageTagFilter} onValueChange={setPageTagFilter}><DropdownMenu.RadioItem className="dropdown-item" value="">全部标签</DropdownMenu.RadioItem>{globalTags.map((tag) => <DropdownMenu.RadioItem className="dropdown-item" value={tag.id} key={tag.id}>{tag.name}</DropdownMenu.RadioItem>)}</DropdownMenu.RadioGroup></DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root>
             <div className="page-list-heading">
               <span>页面</span>
               <DropdownMenu.Root>
@@ -1028,14 +1078,15 @@ export function Workspace({ appVersion }: { appVersion: string }) {
           </div>
         </section>
       </div>) : <>
-        {!selectedPage && <header className="editor-topbar editor-empty-topbar">
+        {knowledgeOpen && <header className="editor-topbar"><button className="icon-button" aria-label="显示文件夹" onClick={() => setShowSidebar(true)}><Folder size={16} /></button><button className="button-subtle" onClick={() => setKnowledgeOpen(false)}>返回笔记本</button></header>}
+        {!selectedPage && !knowledgeOpen && <header className="editor-topbar editor-empty-topbar">
           <button className="icon-button" title="显示文件夹" aria-label="显示文件夹" onClick={() => setShowSidebar(true)}><Folder size={16} /></button>
           {!isHome && <button className="icon-button mobile-nav-toggle" title="显示页面列表" aria-label="显示页面列表" onClick={() => setShowPages(true)}><NotebookPen size={16} /></button>}
           <div className="empty-editor-actions">
             <button className="button-subtle header-action" type="button" onClick={openGlobalSearch}><Search size={15} />全局搜索</button>
           </div>
         </header>}
-        {!selectedNotebook ? <NotebookHome notebooks={notebooks} importing={transferring} onOpen={(item) => { const notebook = notebooks.find((book) => book.id === item.id); if (notebook) void openNotebook(notebook); }} onCreate={() => { const folder = folders.find((item) => item.isDefault); if (folder) void createNotebook(folder); }} onImport={(file) => void importCnf(file)} /> : !selectedPage ? <div className="empty-state"><div><strong>{selectedNotebook ? "选择或创建页面" : "尚未选择笔记本"}</strong><p>{selectedNotebook ? "从页面列表中打开一篇笔记，或创建新页面" : "点击左侧新建笔记本开始记录"}</p>
+        {knowledgeOpen ? <KnowledgeLibrary onImport={(file) => void importCnf(file)} /> : !selectedNotebook ? <NotebookHome notebooks={notebooks} importing={transferring} onOpen={(item) => { const notebook = notebooks.find((book) => book.id === item.id); if (notebook) void openNotebook(notebook); }} onCreate={() => { const folder = folders.find((item) => item.isDefault); if (folder) void createNotebook(folder); }} onImport={(file) => void importCnf(file)} /> : !selectedPage ? <div className="empty-state"><div><strong>{selectedNotebook ? "选择或创建页面" : "尚未选择笔记本"}</strong><p>{selectedNotebook ? "从页面列表中打开一篇笔记，或创建新页面" : "点击左侧新建笔记本开始记录"}</p>
           {selectedNotebook && <button className="button-primary" style={{ marginTop: 15 }} onClick={() => void createPage()}><Plus size={14} />新建页面</button>}
           {!selectedNotebook && <button className="button-primary" style={{ marginTop: 15 }} onClick={() => {
             const folder = folders.find((item) => item.isDefault);
@@ -1130,6 +1181,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
       {modal === "export" && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setModal(null); }}>
         <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="export-title">
           <header className="modal-header"><strong id="export-title">选择导出范围</strong><button className="icon-button" type="button" aria-label="关闭" onClick={() => setModal(null)}><X size={15} /></button></header>
+          <button className="button-outline native-page-export" type="button" onClick={() => { if (selectedPage) void flushPageEdits(selectedPage.id).then(() => downloadKnowledgeFile(exportScope === "page" ? `/api/pages/${selectedPage.id}/cnf` : `/api/notebooks/${selectedNotebook?.id}/cnf`, `${exportScope === "page" ? selectedPage.title : selectedNotebook?.title}.cnf`)).then(() => setModal(null)).catch((error: unknown) => setError(error instanceof Error ? error.message : "导出失败")); }}>导出原生文件 (.cnf)</button>
           <div className="modal-body export-options">
             <label><input type="radio" name="export-scope" checked={exportScope === "page"} onChange={() => setExportScope("page")} />当前页面</label>
             <label><input type="radio" name="export-scope" checked={exportScope === "notebook"} onChange={() => setExportScope("notebook")} />当前笔记本</label>

@@ -31,7 +31,7 @@ test("native CNF UI round-trip preserves rich content, ordering, images, cover a
   expect(download.suggestedFilename()).toBe("原生备份 Rich Notebook.cnf");
   const bytes = await fs.readFile((await download.path())!);
   const archive = await parseCnf(bytes);
-  expect(archive.manifest.applicationVersion).toBe("1.0.1112");
+  expect(archive.manifest.applicationVersion).toBe("1.1.1118");
   expect(archive.manifest.assets).toHaveLength(1);
   expect(archive.notebook.pages.map((item) => item.title)).toEqual(["另一页面", "完整格式"]);
   await page.locator(".brand-home-link").click();

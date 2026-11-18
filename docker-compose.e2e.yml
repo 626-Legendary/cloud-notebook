@@ -11,7 +11,7 @@ services:
     environment:
       NODE_ENV: production
       CLOUD_NOTEBOOK_ENV: test
-      APP_VERSION: 1.0.1112
+      APP_VERSION: 1.1.1118
       APP_URL: http://127.0.0.1:3002
       DATABASE_URL: /app/data/v31-e2e.db
       JWT_SECRET: v31-isolated-browser-test-secret-at-least-32-characters

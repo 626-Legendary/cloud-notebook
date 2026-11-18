@@ -12,6 +12,7 @@ type DialogField = {
   value?: string;
   placeholder?: string;
   maxLength?: number;
+  required?: boolean;
   type?: "text" | "select" | "file";
   accept?: string;
   cropNotebookCover?: boolean;
@@ -68,7 +69,7 @@ export function FormDialogProvider({ children }: { children: ReactNode }) {
                 ? <select autoFocus={request.fields[0] === field} className="control-input" required value={values[field.name] ?? ""} onChange={(event) => setValues((current) => ({ ...current, [field.name]: event.target.value }))}>
                   {field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
-                : <input autoFocus={request.fields[0] === field} className="control-input" required minLength={1} maxLength={field.maxLength ?? 120} placeholder={field.placeholder} value={values[field.name] ?? ""} onChange={(event) => setValues((current) => ({ ...current, [field.name]: event.target.value }))} />}
+                : <input autoFocus={request.fields[0] === field} className="control-input" required={field.required ?? true} minLength={field.required === false ? undefined : 1} maxLength={field.maxLength ?? 120} placeholder={field.placeholder} value={values[field.name] ?? ""} onChange={(event) => setValues((current) => ({ ...current, [field.name]: event.target.value }))} />}
             </label>)}
             <div className="form-dialog-actions">
               <DialogPrimitive.Close type="button" className="button-outline">取消</DialogPrimitive.Close>

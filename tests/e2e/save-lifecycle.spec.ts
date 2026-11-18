@@ -28,7 +28,7 @@ test("loading, version, compact labels, unpin and nine new real fonts", async ({
   release();
   await expect(page.locator(".notebook-editor")).toBeVisible();
   await expect(page.locator(".workspace .environment-badge")).toHaveCount(0);
-  await expect(page.getByLabel("应用版本")).toHaveText("v 1.0.1112");
+  await expect(page.getByLabel("应用版本")).toHaveText("v 1.1.1118");
   await page.screenshot({ path: testInfo.outputPath("workspace-version.png") });
   await expect(page.locator('.breadcrumbs [aria-current="page"]')).toHaveText("A".repeat(60) + "...");
   await expect(page.locator('.breadcrumbs [aria-current="page"]')).toHaveAttribute("title", "A".repeat(70));

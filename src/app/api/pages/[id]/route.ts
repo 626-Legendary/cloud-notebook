@@ -5,6 +5,8 @@ import { pages } from "@/db/schema";
 import { authError, requireUser } from "@/lib/auth";
 import { assertSameOrigin, jsonError } from "@/lib/http";
 
+import { validateKnowledgeContent, KnowledgeError } from "@/lib/knowledge";
+
 const docSchema = z.object({ type: z.literal("doc"), content: z.array(z.record(z.unknown())).optional() });
 const updateSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
@@ -56,6 +58,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       if (!latest) return { error: "missing" as const };
       if (latest.version !== parsed.data.version) return { error: "conflict" as const, version: latest.version };
       if (title === latest.title && content === latest.content) return { page: latest };
+      validateKnowledgeContent(userId, content, undefined, JSON.parse(latest.content));
       const ownsAsset = sqlite.prepare("SELECT 1 FROM assets WHERE id = ? AND user_id = ?");
       for (const assetId of referencedAssets) {
         if (!ownsAsset.get(assetId, userId)) return { error: "asset" as const };
@@ -86,7 +89,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       return jsonError("页面不存在", 404);
     }
     return Response.json({ page: saveResult.page });
-  } catch (error) { return jsonError("保存失败，请稍后重试", authError(error)); }
+  } catch (error) { if (error instanceof KnowledgeError) return jsonError(error.message, error.status); return jsonError("保存失败，请稍后重试", authError(error)); }
 }
 
 function collectAssetIds(value: unknown, ids = new Set<string>()) {

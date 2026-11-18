@@ -28,7 +28,7 @@ export function deleteManagedUser(sqlite: Database.Database, uploadRoot: string,
       assetCount = assets.length;
       const ownedIds = new Set(assets.map((asset) => asset.id));
       if (assets.length) {
-        const foreignDocs = sqlite.prepare("SELECT content FROM pages WHERE user_id != ? UNION ALL SELECT content FROM note_snapshots WHERE user_id != ?").iterate(userId, userId) as IterableIterator<{ content: string }>;
+        const foreignDocs = sqlite.prepare("SELECT content FROM pages WHERE user_id != ? UNION ALL SELECT content FROM note_snapshots WHERE user_id != ? UNION ALL SELECT content FROM knowledge_entries WHERE user_id != ?").iterate(userId, userId, userId) as IterableIterator<{ content: string }>;
         const references = collectDocumentAssetIds((function* () { for (const row of foreignDocs) yield row.content; })());
         const covers = sqlite.prepare("SELECT cover_asset_id AS id FROM notebooks WHERE user_id != ? AND cover_asset_id IS NOT NULL").all(userId) as { id: string }[];
         if (references.ambiguous || [...references.ids, ...covers.map((row) => row.id)].some((id) => ownedIds.has(id))) {

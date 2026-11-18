@@ -60,3 +60,13 @@ it("retains missing records when documents are ambiguous", () => {
   expect(() => cleanupOrphanAssets(admin, [id])).toThrow("无法解析");
   expect(state.sqlite.prepare("SELECT COUNT(*) AS n FROM assets").get()).toEqual({ n: 1 });
 });
+
+it("protects images referenced only by knowledge entries including deleted entries", () => {
+  const id = missing();
+  const entry = randomUUID(); const content = JSON.stringify({ type: "doc", content: [{ type: "image", attrs: { src: `/uploads/notes/${id}`, assetId: id } }] });
+  state.sqlite.prepare("INSERT INTO knowledge_entries (id,user_id,title,content,created_at,updated_at) VALUES (?,?, '知识图片',?,?,?)").run(entry, owner, content, now, now);
+  let result = scanAssetInventory({ onlyOrphans: false }); expect(result.candidates.find((item) => item.id === id)?.status).toBe("referenced");
+  state.sqlite.prepare("UPDATE knowledge_entries SET deleted_at=? WHERE id=?").run(now, entry);
+  result = scanAssetInventory({ onlyOrphans: false }); expect(result.candidates.find((item) => item.id === id)?.status).toBe("referenced");
+  expect(result.candidates.find((item) => item.id === id)?.trashResourceReferences).toBe(1);
+});

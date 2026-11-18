@@ -128,3 +128,22 @@ E2E_ALLOW_MUTATIONS=1 E2E_ADMIN_PASSWORD=V31DisposableAdmin12345 \
 ```
 
 该口令仅属于一次性 Compose 环境；本轮独立的空闲专项也通过（1 项），完整套件包含该专项。测试后执行 `docker compose -f docker-compose.e2e.yml down` 清理。
+
+
+## 知识库系统回归（1.1.1118）
+
+新增 `knowledge-document`、`knowledge-http` 单元测试；`knowledge`、`knowledge-migration`、`user-knowledge-backup` 集成测试，并扩展 `cnf-round-trip` 与 `missing-asset-cleanup`。实际在 Node20 隔离容器通过 26 个文件、89 项测试，覆盖别名唯一与归一、正文版本、代码／链接输入边界、精确修复及事务回滚、全局标签、迁移保留旧正文、图片保护、CNF2 范围／冲突／ID 映射和用户 ZIP2 恢复。
+
+`tests/e2e/knowledge-workspace.spec.ts` 包含 6 个真实浏览器／HTTP 场景：阅读与共用编辑器、别名／循环导航／来源、手动联想与剪贴板／撤销重做／合成组合输入、引用检查与标签管理、认证权限与 CNF2、新建空词条及详情框中的标签／快捷键、别名跨会话冲突与明确放弃流程。仍保留所有原有浏览器测试和关键断言。
+
+```bash
+docker compose -f docker-compose.e2e.yml up -d --build --wait
+E2E_BASE_URL=http://127.0.0.1:3002 E2E_ALLOW_MUTATIONS=1 \
+  E2E_ADMIN_PASSWORD=V31DisposableAdmin12345 npm run test:e2e
+# 无论测试成功或失败，都执行清理：
+docker compose -f docker-compose.e2e.yml down
+```
+
+此管理员口令仅用于一次性环境。不能将测试指向正式 3000 或持久化测试 3001。当前 Chrome 桌面／移动视口的自动化不替代真实设备、操作系统中文输入法、Safari／Firefox或多小时／大规模压力验收。词条的 409 与权限由集成及真实 HTTP 用例覆盖；不把页面历史快照测试当作词条具备同样的历史恢复入口。
+
+本次完整 Chromium 回归实际通过 34 项（`test-results/knowledge-release`），涵盖原有 28 项和新增 6 项知识库场景；TypeScript、ESLint 和隔离 Docker 生产构建均通过。最后调整知识库按钮的移动端图文对齐后，再次构建成功并通过全部 6 项知识库专项（`test-results/knowledge-layout-verified`），已查看移动视口截图；界面截图不等同于真实设备验收。测试服务已清理。
