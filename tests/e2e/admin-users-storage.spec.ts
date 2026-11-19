@@ -88,19 +88,32 @@ test("admin layout stays full-width with stable mobile navigation and user delet
     const me = (await (await page.request.get("/api/auth/me")).json()).user;
     expect((await page.request.delete(`/api/admin/users/${me.id}`, { headers })).status()).toBe(404);
     expect((await page.request.delete(`/api/admin/users/${user.id}`, { headers: { Origin: "https://invalid.example" } })).status()).toBe(403);
-    for (const width of [2100, 390]) {
+    for (const width of [2100, 1024, 768, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });
       let navHeight: number | undefined;
       for (const route of ["/admin", "/admin/users", "/admin/assets", "/admin/backups", "/admin/settings"]) {
         await page.goto(route);
         await expect(page.locator(".admin-title")).toBeVisible();
         const nav = (await page.locator(".admin-nav").boundingBox())!, main = (await page.locator(".admin-main").boundingBox())!;
+        const logoutButton = page.getByRole("button",{name:"退出登录",exact:true});
+        const difference = await logoutButton.evaluate((button) => {
+          const text = [...button.childNodes].find((node)=>node.nodeType===Node.TEXT_NODE && node.textContent?.trim());
+          if(!text) return Infinity;
+          const range=document.createRange();range.selectNodeContents(text);
+          const label=range.getBoundingClientRect(),icon=button.querySelector("svg")!.getBoundingClientRect();
+          return Math.abs(icon.y+icon.height/2-label.y-label.height/2);
+        });
+        expect(difference).toBeLessThan(3);
         expect(Math.abs(main.x + main.width - width)).toBeLessThan(2);
         expect(main.height).toBeGreaterThanOrEqual(900 - main.y - 1);
-        if (width === 390) {
+        if (width <= 950) {
           if (navHeight === undefined) navHeight = nav.height;
           expect(nav.height).toBe(navHeight);
-          expect(nav.height).toBeLessThan(90);
+          expect(nav.height).toBeLessThan(150);
+          await expect(page.locator(".admin-sidebar-brand")).toBeVisible();
+          const logout = (await page.getByRole("button",{name:"退出登录",exact:true}).boundingBox())!;
+          expect(logout.x).toBeGreaterThanOrEqual(0); expect(logout.x+logout.width).toBeLessThanOrEqual(width);
+          expect(await page.locator(".admin-nav-links").evaluate((element)=>!element.contains(document.querySelector(".admin-topbar")))).toBe(true);
         }
       }
     }

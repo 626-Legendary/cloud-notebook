@@ -69,6 +69,11 @@ test("page panel resizing preserves editing, persists width and shares edge scro
 test("workspace navigation, export choices and trash route share the refined layout",async({page,baseURL},testInfo)=>{
  if(process.env.E2E_ALLOW_MUTATIONS!=="1" || baseURL!=="http://127.0.0.1:3002")throw new Error("Disposable server required");
  await page.goto("/login");await expect(page.locator(".brand-mark img")).toHaveAttribute("src","/icon.png");
+ expect((await page.locator(".brand-mark").boundingBox())!.width).toBe(64);
+ expect((await page.locator(".brand-mark img").boundingBox())!.width).toBe(48);
+ await page.setViewportSize({width:1440,height:900});await page.screenshot({path:testInfo.outputPath("login-brand-desktop.png")});
+ await page.setViewportSize({width:390,height:844});await page.evaluate(()=>document.documentElement.classList.add("dark"));await page.screenshot({path:testInfo.outputPath("login-brand-mobile-dark.png")});
+ await page.setViewportSize({width:1440,height:900});
  const headers={Origin:baseURL!},password="BrowserTest12345";
  expect((await page.request.post("/api/auth/register",{headers,data:{username:`layout_${Date.now()}`,password,confirmPassword:password}})).status()).toBe(201);
  const {notebook}=await(await page.request.post("/api/notebooks",{headers,data:{title:"布局笔记本"}})).json();
@@ -79,6 +84,13 @@ test("workspace navigation, export choices and trash route share the refined lay
  await expect(page.locator(".export-format-actions button")).toHaveText(["打印 / 保存为 PDF","导出原生文件 (.cnf)","取消"]);
  await page.getByRole("button",{name:"取消",exact:true}).click();
  await page.getByRole("button",{name:"账号与设置",exact:true}).click();await page.getByRole("menuitem",{name:"数据管理",exact:true}).hover();await page.getByRole("menuitem",{name:"引用管理",exact:true}).click();await expect(page.getByRole("heading",{name:"引用管理",exact:true})).toBeVisible();await page.getByLabel("关闭引用检查",{exact:true}).click();
+ expect((await page.request.post("/api/pins",{headers,data:{type:"notebook",id:notebook.id}})).ok()).toBe(true);await page.reload();
+ await expect(page.locator(".pinned-item").filter({hasText:notebook.title}).locator("svg")).toHaveClass(/lucide-notebook-pen/);
+ await page.getByRole("button",{name:"知识库",exact:true}).click();
+ await expect(page.locator(".workspace-view-topbar").getByRole("button",{name:"返回笔记本",exact:true}).locator("svg")).toHaveClass(/lucide-arrow-left/);
+ await page.getByRole("button",{name:"返回笔记本",exact:true}).click();
  await page.getByRole("button",{name:"垃圾箱",exact:true}).click();await expect(page).toHaveURL(/\/app\/trash/);await expect(page.locator(".pages-panel")).toHaveCount(0);await page.reload();await expect(page.locator(".trash-page")).toBeVisible();
+ await expect(page.locator(".workspace-view-topbar").getByRole("button",{name:"返回笔记本",exact:true}).locator("svg")).toHaveClass(/lucide-arrow-left/);
  await page.screenshot({path:testInfo.outputPath("trash-route.png")});
+ await page.getByRole("button",{name:"返回笔记本",exact:true}).click();await expect(page.locator(".notebook-editor")).toBeVisible();
 });

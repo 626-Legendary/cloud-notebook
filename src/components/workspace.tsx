@@ -1,5 +1,5 @@
 "use client";
-import { Database } from "lucide-react";
+import { ArrowLeft, Database } from "lucide-react";
 import { useKnowledgeImportConflicts } from "@/components/knowledge-import-conflicts";
 
 import { KnowledgeDialogs } from "@/components/knowledge-dialogs";
@@ -869,7 +869,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
           <div className="section-label pinned-section-title"><Pin size={13} />置顶</div>
           {pins.map((item) => <div className="pinned-row" key={`${item.type}:${item.id}`}>
             <button className="pinned-item" type="button" title={item.title} onClick={() => void openPinnedItem(item)}>
-              {item.type === "notebook" ? <BookOpen size={15} /> : <FileText size={15} />}<span>{item.title}</span>
+              {item.type === "notebook" ? <NotebookPen size={15} /> : <FileText size={15} />}<span>{item.title}</span>
             </button>
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild><button className="icon-button pinned-more" aria-label={`${item.title} 置顶操作`} title="置顶操作"><MoreHorizontal size={15} /></button></DropdownMenu.Trigger>
@@ -1066,10 +1066,11 @@ export function Workspace({ appVersion }: { appVersion: string }) {
       </section>}
 
       <section className="editor-panel">
+        {(knowledgeOpen || trashOpen) && <header className="editor-topbar workspace-view-topbar"><button className="icon-button mobile-nav-toggle" aria-label="显示文件夹" onClick={() => setShowSidebar(true)}><Folder size={16} /></button><button className="button-subtle" onClick={() => { if (trashOpen) setTrashOpen(false); else setKnowledgeOpen(false); }}><ArrowLeft size={16} />返回笔记本</button></header>}
         {trashOpen ? (      <div className="trash-workspace">
         <section className="trash-page" aria-labelledby="trash-title">
           <header className="modal-header">
-            <strong id="trash-title">垃圾箱</strong>
+            <h1 id="trash-title" className="text-ui-title">垃圾箱</h1>
             <div className="trash-header-actions">
               {trashItems.length > 0 && <button className="button-subtle destructive" type="button" onClick={() => void emptyTrash()}>清空垃圾箱</button>}
               <button className="icon-button" type="button" aria-label="关闭垃圾箱" onClick={() => setTrashOpen(false)}><X size={15} /></button>
@@ -1088,7 +1089,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
           </div>
         </section>
       </div>) : <>
-        {knowledgeOpen && <header className="editor-topbar"><button className="icon-button mobile-nav-toggle" aria-label="显示文件夹" onClick={() => setShowSidebar(true)}><Folder size={16} /></button><button className="button-subtle" onClick={() => setKnowledgeOpen(false)}>返回笔记本</button></header>}
+
         {!selectedPage && !knowledgeOpen && <header className="editor-topbar editor-empty-topbar">
           <button className="icon-button mobile-nav-toggle" title="显示文件夹" aria-label="显示文件夹" onClick={() => setShowSidebar(true)}><Folder size={16} /></button>
           {!isHome && <button className="icon-button mobile-nav-toggle" title="显示页面列表" aria-label="显示页面列表" onClick={() => setShowPages(true)}><NotebookPen size={16} /></button>}

@@ -25,7 +25,7 @@ test("Favicon, shared theme controls, preferences-only app theme, search icons a
   expect((await page.request.patch(`/api/pages/${note.id}`, { headers, data: { version: note.version, content: { type: "doc", content: Array.from({ length: 80 }, (_, i) => ({ type: "paragraph", content: [{ type: "text", text: `search needle ${i}` }] })) } } })).ok()).toBeTruthy();
   await page.goto(`/app?page=${note.id}`);
   await expect(page.locator(".notebook-editor")).toBeVisible();
-  await expect(page.getByLabel("应用版本")).toHaveText("v 1.1.1119");
+  await expect(page.getByLabel("应用版本")).toHaveText("v 1.1.1119b");
   await page.getByRole("button", { name: "搜索当前页面", exact: true }).click();
   const input = page.getByRole("searchbox", { name: "搜索当前页面正文", exact: true });
   await input.fill("needle");

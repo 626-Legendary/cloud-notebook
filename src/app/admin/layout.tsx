@@ -14,7 +14,7 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
   return <div className="admin-shell">
     <aside className="admin-nav">
       <div className="brand-row"><span className="brand-small"><Image src="/icon.png" alt="" width={24} height={24} unoptimized /></span><span className="admin-sidebar-brand"><strong>Cloud Notebook</strong><span>管理控制台</span></span></div>
-      <AdminNavigation />
+      <nav className="admin-nav-links" aria-label="管理导航"><AdminNavigation /></nav>
       <AdminHeader />
     </aside>
     <main className="admin-main">{children}</main>

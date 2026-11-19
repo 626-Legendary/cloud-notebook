@@ -2,7 +2,7 @@
 
 面向个人学习与知识管理的自托管笔记应用。使用 SQLite 和本地附件目录保存数据，提供文件夹、笔记本、富文本页面、多用户隔离、历史快照、垃圾箱和管理员备份功能。
 
-软件包版本以 [`package.json`](package.json) 为准（当前开发基线 `1.1.1119`）。界面右下角的显示版本可通过 `APP_VERSION` 配置。版本更新内容见 [版本更迭记录](CHANGELOG.md)。
+软件包版本以 [`package.json`](package.json) 为准（当前开发基线 `1.1.1119b`）。界面右下角的显示版本可通过 `APP_VERSION` 配置。版本更新内容见 [版本更迭记录](CHANGELOG.md)。
 
 1.1.1118 新增独立个人知识库、`@` 结构化引用、反向引用和手动检查／精确修复。词条复用现有富文本编辑器，详见 [知识库说明](docs/KNOWLEDGE_BASE.md)。已有编辑器空闲性能约束继续保留。
 
@@ -82,7 +82,7 @@ npm ci
 JWT_SECRET=替换为至少32个字符的随机密钥
 ADMIN_INITIAL_PASSWORD=替换为至少12个字符的独立强密码
 APP_URL=http://localhost:3000
-APP_VERSION=1.1.1119
+APP_VERSION=1.1.1119b
 ```
 
 启动开发服务：
@@ -184,7 +184,7 @@ docker compose --env-file .env.test -p cloud-notebook-test -f docker-compose.tes
 | `JWT_SECRET` | JWT 签名密钥，至少 32 字符；更换后旧登录凭证将失效 | 必填 |
 | `DATABASE_URL` | SQLite 文件路径，支持相对路径、绝对路径或 `file:` 前缀 | `./data/cloud-notebook.db` |
 | `APP_URL` | 写请求 Origin 校验额外允许的公开地址，多个地址用逗号分隔；也接受请求实际到达的地址 | 示例为 `http://localhost:3000` |
-| `APP_VERSION` | Editor Panel 右下角显示的版本号 | `1.1.1119` |
+| `APP_VERSION` | Editor Panel 右下角显示的版本号 | `1.1.1119b` |
 | `CLOUD_NOTEBOOK_ENV` | 设为 `test` 时，登录页显示“测试版” | Compose 分别指定 `production` / `test` |
 | `ALLOW_REGISTRATION` | 尚无数据库设置时的注册开关初始值，之后以管理员设置为准 | `true` |
 | `MAX_UPLOAD_SIZE_MB` | 单张图片上传上限，单位 MB | `10` |
