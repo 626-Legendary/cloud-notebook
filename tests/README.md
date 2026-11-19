@@ -132,18 +132,20 @@ E2E_ALLOW_MUTATIONS=1 E2E_ADMIN_PASSWORD=V31DisposableAdmin12345 \
 
 ## 知识库系统回归（1.1.1118）
 
-新增 `knowledge-document`、`knowledge-http` 单元测试；`knowledge`、`knowledge-migration`、`user-knowledge-backup` 集成测试，并扩展 `cnf-round-trip` 与 `missing-asset-cleanup`。实际在 Node20 隔离容器通过 26 个文件、89 项测试，覆盖别名唯一与归一、正文版本、代码／链接输入边界、精确修复及事务回滚、全局标签、迁移保留旧正文、图片保护、CNF2 范围／冲突／ID 映射和用户 ZIP2 恢复。
+2026-11-18 后续修正：移除标签业务测试及入口，保留引用、授权、保存和导入回滚的关键断言；新增独立路由、浅深色不透明预览、新窗口外链、管理员冲突列表及取消／复用／重命名操作。历史标签表不删除，导出不再读取标签；专项测试确认原标签记录保留。
 
-`tests/e2e/knowledge-workspace.spec.ts` 包含 6 个真实浏览器／HTTP 场景：阅读与共用编辑器、别名／循环导航／来源、手动联想与剪贴板／撤销重做／合成组合输入、引用检查与标签管理、认证权限与 CNF2、新建空词条及详情框中的标签／快捷键、别名跨会话冲突与明确放弃流程。仍保留所有原有浏览器测试和关键断言。
+本次实际通过 26 个 Vitest 文件、92 项单元／隔离集成测试，覆盖名字归一唯一性、精确引用修复、版本冲突、CNF2／用户 ZIP2 的复用与重命名、原正文保护、循环引用 ID 映射、旧表保留和外链安全。追加的 CNF 循环引用重命名及遗留标签保护断言另行执行，8 项 CNF 集成测试通过。TypeScript、ESLint 和隔离 Docker 生产镜像构建通过。
+
+`knowledge-workspace.spec.ts` 包含 8 项浏览器／HTTP 用例；只有过时标签功能的断言被替换为移除验证。新流程通过真实文件上传、服务端 409 和恢复写入验证，不靠模拟成功响应。外链测试拦截维基百科请求返回测试内容，不依赖外站联网。知识库可直接访问 `/app/library` 并刷新或通过历史返回。
 
 ```bash
 docker compose -f docker-compose.e2e.yml up -d --build --wait
 E2E_BASE_URL=http://127.0.0.1:3002 E2E_ALLOW_MUTATIONS=1 \
   E2E_ADMIN_PASSWORD=V31DisposableAdmin12345 npm run test:e2e
-# 无论测试成功或失败，都执行清理：
+# 成功或失败均清理本次创建的服务：
 docker compose -f docker-compose.e2e.yml down
 ```
 
-此管理员口令仅用于一次性环境。不能将测试指向正式 3000 或持久化测试 3001。当前 Chrome 桌面／移动视口的自动化不替代真实设备、操作系统中文输入法、Safari／Firefox或多小时／大规模压力验收。词条的 409 与权限由集成及真实 HTTP 用例覆盖；不把页面历史快照测试当作词条具备同样的历史恢复入口。
+管理员口令仅用于一次性测试环境。不能指向正式 3000 或持久化测试 3001。Chromium 桌面／移动视口的自动化不能替代真实设备、系统中文输入法、Safari／Firefox 或长期大规模运行验收。没有将真实数据库用作夹具，也没有执行真实迁移、生产部署或数据恢复。
 
-本次完整 Chromium 回归实际通过 34 项（`test-results/knowledge-release`），涵盖原有 28 项和新增 6 项知识库场景；TypeScript、ESLint 和隔离 Docker 生产构建均通过。最后调整知识库按钮的移动端图文对齐后，再次构建成功并通过全部 6 项知识库专项（`test-results/knowledge-layout-verified`），已查看移动视口截图；界面截图不等同于真实设备验收。测试服务已清理。
+本轮完整 Chromium 回归通过 36 项（`test-results/knowledge-refinements`）。最终补充导入目标并发变动的普通 409 保护后，生产镜像再次构建成功，8 项知识库专项再次通过（`test-results/knowledge-refinements-final`），包含对缺少冲突清单错误的模拟响应验证；实际成功导入／恢复仍使用真实 API。深色预览截图已检查。一次性测试服务完成后清理。

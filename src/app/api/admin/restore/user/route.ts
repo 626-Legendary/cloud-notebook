@@ -1,3 +1,4 @@
+import { KnowledgeError } from "@/lib/knowledge";
 import { z } from "zod";
 import { audit } from "@/lib/admin";
 import { authError, requireAdmin } from "@/lib/auth";
@@ -16,10 +17,11 @@ export async function POST(request: Request) {
     const file = form.get("file");
     if (!parsedUserId.success || !(file instanceof File) || !file.name.toLowerCase().endsWith(".zip")) return jsonError("请选择有效的 ZIP 备份文件");
     if (file.size === 0 || file.size > 100 * 1024 * 1024) return jsonError("备份文件大小必须小于 100 MB");
-    const restored = await restoreUserArchive(parsedUserId.data, Buffer.from(await file.arrayBuffer()));
+    const restored = await restoreUserArchive(parsedUserId.data, Buffer.from(await file.arrayBuffer()), form.get("conflictPolicy") === "rename" ? "rename" : form.get("conflictPolicy") === "reuse" ? "reuse" : "reject");
     await audit(admin.userId, "user.data.restore", parsedUserId.data);
     return Response.json({ restored });
   } catch (error) {
+    if (error instanceof KnowledgeError) return Response.json({ error: error.message, ...error.details }, { status: error.status });
     console.error("User data restore failed", error);
     if (error instanceof z.ZodError) return jsonError("备份数据结构无效");
     if (error instanceof Error && !["UNAUTHORIZED", "FORBIDDEN"].includes(error.message)) return jsonError(error.message, 400);

@@ -1,10 +1,11 @@
+import { planKnowledgeImport, type ImportPolicy } from "@/lib/knowledge-import";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { sqlite } from "@/db";
 import { CnfError, CNF_LIMITS, cnfNotebookSchema, createCnfZip, mapDocumentAssets, parseCnf, sha256, type CnfManifest, type CnfKnowledge } from "@/lib/cnf-format";
 import { detectImage, extensionForMime } from "@/lib/images";
-import { getEntry, KnowledgeError, replaceEntryNames, sourceTags } from "@/lib/knowledge";
-import { documentReferences, mapKnowledgeReferences, normalizeKnowledgeName } from "@/lib/knowledge-document";
+import { getEntry, replaceEntryNames } from "@/lib/knowledge";
+import { documentReferences, mapKnowledgeReferences } from "@/lib/knowledge-document";
 import { safeFileName } from "@/lib/filename";
 
 type AssetRow = { id: string; userId: string; storagePath: string; mimeType: string; originalName: string; size: number; createdAt: string };
@@ -13,7 +14,7 @@ const pageColumns = "id,title,content,version,sort_order AS sortOrder,deleted_at
 const uploads = () => path.resolve(process.cwd(), "data/uploads/notes");
 
 async function exportCnf(userId: string, notebookId: string, scope: CnfManifest["scope"] = "notebook", pageId?: string) {
-  // Capture documents, names, tags and asset metadata in one short SQLite snapshot.
+  // Capture documents, names and asset metadata in one short SQLite snapshot.
   const { notebook, knowledge, resources, portablePath } = sqlite.transaction(() => {
     let rawBytes = 0;
     const budget = (bytes: number) => { rawBytes += bytes; if (rawBytes > CNF_LIMITS.expanded) throw new CnfError("导出正文超过 200 MB"); };
@@ -71,11 +72,10 @@ async function exportCnf(userId: string, notebookId: string, scope: CnfManifest[
     };
     const notebook = cnfNotebookSchema.parse({ ...snapshot, pages: snapshot.pages.map((page) => ({ ...page, content: portable(page.content) })), snapshots: snapshot.snapshots.map((item) => ({ ...item, content: portable(item.content) })) });
     if (notebook.coverAssetId) resolveAsset(notebook.coverAssetId);
-    const tagIds = new Set<string>();
-    const pageTags = notebook.pages.map((page) => ({ pageId: page.id, tagIds: sourceTags(userId, "page", page.id).map((tag) => { tagIds.add(tag.id); return tag.id; }) }));
+
     const knowledge: CnfKnowledge = {
-      entries: packed.map((entry) => ({ id: entry.id, title: entry.title, aliases: entry.aliases, content: portable(JSON.parse(entry.content)), createdAt: entry.createdAt, updatedAt: entry.updatedAt, tagIds: entry.tags.map((tag) => { tagIds.add(tag.id); return tag.id; }) })),
-      tags: (sqlite.prepare("SELECT id,name FROM tags WHERE user_id=? ORDER BY name").all(userId) as { id: string; name: string }[]).filter((tag) => scope === "knowledge" || tagIds.has(tag.id)), pageTags
+      entries: packed.map((entry) => ({ id: entry.id, title: entry.title, aliases: entry.aliases, content: portable(JSON.parse(entry.content)), createdAt: entry.createdAt, updatedAt: entry.updatedAt, tagIds: [] })),
+      tags: [], pageTags: []
     };
 
     return { notebook, knowledge, resources, portablePath };
@@ -106,23 +106,14 @@ async function exportCnf(userId: string, notebookId: string, scope: CnfManifest[
   return { bytes: await createCnfZip(entries), filename: `${safeFileName(scope === "page" ? notebook.pages[0].title : notebook.title)}.cnf` };
 }
 
-export async function importNotebookCnf(userId: string, bytes: Buffer, reuseExisting = false) {
+export async function importNotebookCnf(userId: string, bytes: Buffer, policy: ImportPolicy | boolean = "reject") {
   // Validate the full archive, references and editor compatibility before any file/DB write.
   const { manifest, notebook, knowledge, entries } = await parseCnf(bytes);
-  const entryIds = new Map<string, string>();
-  const reused = new Set<string>();
-  for (const entry of knowledge.entries) {
-    const matches = new Set<string>();
-    for (const name of [entry.title, ...entry.aliases]) {
-      const existing = sqlite.prepare("SELECT entry_id AS id FROM knowledge_names WHERE user_id=? AND normalized_name=?").get(userId, normalizeKnowledgeName(name)) as { id: string } | undefined;
-      if (existing) matches.add(existing.id);
-    }
-    if (matches.size) {
-      if (matches.size > 1) throw new CnfError("多个现有词条占用了导入名称或别名，请先调整别名后重新导入", 409);
-      if (!reuseExisting) throw new CnfError("词条名称或别名与现有知识库冲突，请明确选择复用已有词条（不覆盖正文）", 409);
-      entryIds.set(entry.id, [...matches][0]); reused.add(entry.id);
-    } else entryIds.set(entry.id, crypto.randomUUID());
-  }
+  const selectedPolicy = typeof policy === "boolean" ? (policy ? "reuse" : "reject") : policy;
+  const plans = planKnowledgeImport(userId, knowledge.entries, selectedPolicy);
+  const plansById = new Map(plans.map((item) => [item.sourceId, item]));
+  const entryIds = new Map(plans.map((item) => [item.sourceId, item.id]));
+  const reused = new Set(plans.filter((item) => item.reused).map((item) => item.sourceId));
   const folder = sqlite.prepare("SELECT id FROM folders WHERE user_id=? AND is_default=1").get(userId) as { id: string } | undefined;
   if (!folder) throw new CnfError("账号缺少默认文件夹");
   const notebookId = crypto.randomUUID();
@@ -146,39 +137,35 @@ export async function importNotebookCnf(userId: string, bytes: Buffer, reuseExis
       try { await handle.writeFile(entries.get(asset.path)!); } finally { await handle.close(); }
     }
     sqlite.transaction(() => {
+      // Reject name changes since preflight rather than silently retargeting imported references.
+      const rechecked = new Map(planKnowledgeImport(userId, knowledge.entries, selectedPolicy).map((item) => [item.sourceId, item]));
+      for (const plan of plans) {
+        const next = rechecked.get(plan.sourceId)!;
+        if (next.reused !== plan.reused || next.reused && next.id !== plan.id || next.title !== plan.title || JSON.stringify(next.aliases) !== JSON.stringify(plan.aliases)) throw new CnfError("目标知识库已改变，请重新导入", 409);
+      }
       if (!sqlite.prepare("SELECT id FROM folders WHERE id=? AND user_id=?").get(folder.id, userId)) throw new CnfError("导入目标文件夹已改变，请重试");
       const insertAsset = sqlite.prepare("INSERT INTO assets (id,user_id,storage_path,mime_type,original_name,size,created_at) VALUES (?,?,?,?,?,?,?)");
       for (const asset of assetRows) insertAsset.run(asset.newId, userId, asset.storagePath, asset.mimeType, safeFileName(asset.originalName, 200), asset.size, asset.createdAt);
-      const now = new Date().toISOString();
       for (const entry of knowledge.entries) {
+        const plan = plansById.get(entry.id)!;
         const id = entryIds.get(entry.id)!;
         if (reused.has(entry.id)) { getEntry(userId, id); continue; }
-        sqlite.prepare("INSERT INTO knowledge_entries (id,user_id,title,content,created_at,updated_at) VALUES (?,?,?,?,?,?)").run(id, userId, entry.title, rewrite(entry.content), entry.createdAt, entry.updatedAt);
-        replaceEntryNames(userId, id, entry.title, entry.aliases);
-      }
-      const tagIds = new Map<string, string>();
-      for (const tag of knowledge.tags) {
-        const normalized = normalizeKnowledgeName(tag.name);
-        const existing = sqlite.prepare("SELECT id FROM tags WHERE user_id=? AND normalized_name=?").get(userId, normalized) as { id: string } | undefined;
-        const id = existing?.id ?? crypto.randomUUID(); tagIds.set(tag.id, id);
-        if (!existing) sqlite.prepare("INSERT INTO tags (id,user_id,name,normalized_name,created_at,updated_at) VALUES (?,?,?,?,?,?)").run(id, userId, tag.name, normalized, now, now);
+        sqlite.prepare("INSERT INTO knowledge_entries (id,user_id,title,content,created_at,updated_at) VALUES (?,?,?,?,?,?)").run(id, userId, plan.title, rewrite(entry.content), entry.createdAt, entry.updatedAt);
+        replaceEntryNames(userId, id, plan.title, plan.aliases);
       }
       if (manifest.scope !== "knowledge") sqlite.prepare("INSERT INTO notebooks (id,user_id,folder_id,title,cover_asset_id,sort_order,pinned_at,pin_sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)").run(notebookId, userId, folder.id, notebook.title, notebook.coverAssetId ? assetIds.get(notebook.coverAssetId) : null, notebook.sortOrder, notebook.pinnedAt, notebook.pinSortOrder, notebook.createdAt, notebook.updatedAt);
       const insertPage = sqlite.prepare("INSERT INTO pages (id,user_id,notebook_id,title,content,sort_order,version,deleted_at,pinned_at,pin_sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,1,?,?,?,?,?)");
       notebook.pages.forEach((page, index) => insertPage.run(pageIds.get(page.id), userId, notebookId, page.title, pageContents[index], page.sortOrder, page.deletedAt, page.pinnedAt, page.pinSortOrder, page.createdAt, page.updatedAt));
       const insertSnapshot = sqlite.prepare("INSERT INTO note_snapshots (id,user_id,page_id,title,content,created_at) VALUES (?,?,?,?,?,?)");
       notebook.snapshots.forEach((snapshot, index) => insertSnapshot.run(crypto.randomUUID(), userId, pageIds.get(snapshot.pageId), snapshot.title, snapshotContents[index], snapshot.createdAt));
-      const assign = (kind: string, sourceId: string, ids: string[]) => { for (const id of ids) sqlite.prepare("INSERT OR IGNORE INTO content_tags (tag_id,source_type,source_id) VALUES (?,?,?)").run(tagIds.get(id), kind, sourceId); };
-      for (const item of knowledge.pageTags) assign("page", pageIds.get(item.pageId)!, item.tagIds);
-      for (const item of knowledge.entries) if (!reused.has(item.id)) assign("entry", entryIds.get(item.id)!, item.tagIds);
+
 
     })();
   } catch (error) {
     await Promise.all(createdFiles.map((file) => fs.rm(file, { force: true })));
-    if (error instanceof KnowledgeError) throw new CnfError(error.message, error.status);
     throw error;
   }
-  return { kind: manifest.scope, entries: knowledge.entries.length, reusedEntries: reused.size, id: manifest.scope === "knowledge" ? "" : notebookId, title: notebook.title, pages: notebook.pages.length, assets: manifest.assets.length };
+  return { kind: manifest.scope, entries: knowledge.entries.length, reusedEntries: reused.size, renamedEntries: plans.filter((item) => item.renamed).length, id: manifest.scope === "knowledge" ? "" : notebookId, title: notebook.title, pages: notebook.pages.length, assets: manifest.assets.length };
 }
 
 export function exportNotebookCnf(userId: string, notebookId: string) { return exportCnf(userId, notebookId); }

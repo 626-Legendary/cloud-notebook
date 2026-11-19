@@ -1,6 +1,5 @@
 "use client";
 
-import { ContentTags } from "@/components/content-tags";
 import { KnowledgeMentions } from "@/components/knowledge-mentions";
 import { knowledgeNodeView } from "@/lib/knowledge-client";
 import { EditorContent, useEditor } from "@tiptap/react";
@@ -814,7 +813,6 @@ export function PageEditor({
       <div className="editor-scroll">
         <ToastViewportAnchor />
         <div className="editor-content-wrap">
-          <ContentTags sourceType={resourceType} sourceId={page.id} />
           <textarea ref={titleInputRef} rows={1} maxLength={resourceType === "entry" ? 120 : 200} className="title-input" placeholder={resourceType === "entry" ? "词条名称" : "无标题笔记"} defaultValue={page.title} onChange={(event) => { resizeTitle(event.currentTarget); changeTitle(event.target.value); }} onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.preventDefault();

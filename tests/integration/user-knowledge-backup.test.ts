@@ -11,7 +11,6 @@ vi.mock("@/db",()=>({get sqlite(){return state.sqlite;},get db(){return drizzle(
 import { createUserExport } from "@/lib/export";
 import { restoreUserArchive } from "@/lib/restore";
 import { createEntry, getEntry, listEntries, checkReferences } from "@/lib/knowledge";
-import { applyTagAction,listTags } from "@/lib/tags";
 let directory: string,owner: string,other: string,pageId: string,entryId: string;
 const root=process.cwd(),image=fs.readFileSync("tests/fixtures/cover.png"),now="2026-11-18T00:00:00.000Z";
 beforeEach(()=>{
@@ -20,17 +19,32 @@ beforeEach(()=>{
  const asset=randomUUID();fs.writeFileSync(path.join(directory,`data/uploads/notes/${asset}.png`),image);state.sqlite.prepare("INSERT INTO assets (id,user_id,storage_path,mime_type,original_name,size,created_at) VALUES (?,?,?,'image/png','测试',?,?)").run(asset,owner,asset+'.png',image.length,now);
  const entry=createEntry(owner,{title:"知识备份",aliases:["Backup"],content:{type:"doc",content:[{type:"image",attrs:{assetId:asset,src:`/uploads/notes/${asset}`}}]}});entryId=entry.id;
  const folder=state.sqlite.prepare("SELECT id FROM folders WHERE user_id=?").get(owner) as {id:string};const notebook=randomUUID();state.sqlite.prepare("INSERT INTO notebooks (id,user_id,folder_id,title,created_at,updated_at) VALUES (?,?,?,'备份笔记',?,?)").run(notebook,owner,folder.id,now,now);pageId=randomUUID();state.sqlite.prepare("INSERT INTO pages (id,user_id,notebook_id,title,content,created_at,updated_at) VALUES (?,?,?,'知识来源',?,?,?)").run(pageId,owner,notebook,JSON.stringify({type:"doc",content:[{type:"paragraph",content:[{type:"knowledgeReference",attrs:{entryId,label:"知识备份",referenceType:"entry"}}]}]}),now,now);
- applyTagAction(owner,{action:"create",name:"共享"});const tag=listTags(owner)[0].id;applyTagAction(owner,{action:"assign",sourceType:"page",sourceId:pageId,tagIds:[tag]});applyTagAction(owner,{action:"assign",sourceType:"entry",sourceId:entryId,tagIds:[tag]});
+
 });
 afterEach(()=>{vi.restoreAllMocks();state.sqlite.close();fs.rmSync(directory,{recursive:true,force:true});});
 async function archive(){const stream=await createUserExport(owner),chunks:Buffer[]=[];for await(const chunk of stream) chunks.push(Buffer.from(chunk));return Buffer.concat(chunks);}
-it("administrator user archive restores knowledge, aliases, tags, references and images together",async()=>{
- const bytes=await archive(),result=await restoreUserArchive(other,bytes);expect(result.entries).toBe(1);expect(result.tags).toBe(1);expect(result.pages).toBe(1);
- const entry=listEntries(other)[0];expect(entry.id).not.toBe(entryId);expect(entry.aliases).toEqual(["Backup"]);expect(getEntry(other,entry.id).tags[0].name).toBe("共享");expect(checkReferences(other).statistics.validReferences).toBe(1);
+it("administrator user archive restores knowledge, aliases, references and images together",async()=>{
+ const bytes=await archive(),result=await restoreUserArchive(other,bytes);expect(result.entries).toBe(1);expect(result.pages).toBe(1);
+ const entry=listEntries(other)[0];expect(entry.id).not.toBe(entryId);expect(entry.aliases).toEqual(["Backup"]);expect(checkReferences(other).statistics.validReferences).toBe(1);
  const content=JSON.parse(getEntry(other,entry.id).content);const asset=content.content[0].attrs.assetId;expect(fs.readFileSync(path.join(directory,`data/uploads/notes/${asset}.png`))).toEqual(image);
 });
 it("name conflicts roll back the whole user restore and remove all newly written files",async()=>{
  const bytes=await archive();createEntry(other,{title:"冲突名称",aliases:["Backup"]});const before=fs.readdirSync(path.join(directory,"data/uploads/notes"));
- await expect(restoreUserArchive(other,bytes)).rejects.toThrow("已被");expect(fs.readdirSync(path.join(directory,"data/uploads/notes"))).toEqual(before);
+ await expect(restoreUserArchive(other,bytes)).rejects.toMatchObject({ status: 409, details: { canReuse: true } });expect(fs.readdirSync(path.join(directory,"data/uploads/notes"))).toEqual(before);
  expect(state.sqlite.prepare("SELECT COUNT(*) AS n FROM pages WHERE user_id=?").get(other)).toEqual({n:0});expect(listEntries(other)).toHaveLength(1);
+});
+
+it("explicit reuse keeps the target body and remaps restored page references",async()=>{
+ const bytes=await archive();const existing=createEntry(other,{title:"现有知识",aliases:["Backup"],content:{type:"doc",content:[{type:"paragraph",content:[{type:"text",text:"已有正文必须保留"}]}]}});
+ const result=await restoreUserArchive(other,bytes,"reuse");expect(result.entries).toBe(0);expect(result.reusedEntries).toBe(1);expect(result.pages).toBe(1);
+ expect(getEntry(other,existing.id)).toEqual(existing);expect(listEntries(other)).toHaveLength(1);
+ const page=state.sqlite.prepare("SELECT content FROM pages WHERE user_id=?").get(other) as {content:string};expect(page.content).toContain(existing.id);expect(checkReferences(other).statistics.validReferences).toBe(1);
+});
+it("rename resolves ambiguous alias conflicts without changing existing entries or losing references",async()=>{
+ const bytes=await archive();const first=createEntry(other,{title:"知识备份",aliases:[]}),second=createEntry(other,{title:"另一个知识",aliases:["Backup"]});
+ await expect(restoreUserArchive(other,bytes,"reuse")).rejects.toMatchObject({status:409,details:{canReuse:false}});
+ const result=await restoreUserArchive(other,bytes,"rename");expect(result.entries).toBe(1);expect(result.renamedEntries).toBe(1);expect(result.reusedEntries).toBe(0);
+ expect(getEntry(other,first.id)).toEqual(first);expect(getEntry(other,second.id)).toEqual(second);
+ const restored=listEntries(other).find((entry)=>entry.id!==first.id&&entry.id!==second.id)!;expect(restored.title).toBe("知识备份（导入 1）");expect(restored.aliases).toEqual(["Backup（导入 1）"]);
+ expect(checkReferences(other).statistics.validReferences).toBe(1);const page=state.sqlite.prepare("SELECT content FROM pages WHERE user_id=?").get(other) as {content:string};expect(page.content).toContain(restored.id);
 });

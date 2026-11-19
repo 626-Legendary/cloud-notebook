@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text, index, primaryKey, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, index, primaryKey } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
@@ -144,12 +144,4 @@ export const knowledgeNames = sqliteTable("knowledge_names", {
   normalizedName: text("normalized_name").notNull(), entryId: text("entry_id").notNull().references(() => knowledgeEntries.id, { onDelete: "cascade" }),
   name: text("name").notNull(), kind: text("kind", { enum: ["title", "alias"] }).notNull()
 }, (table) => ({ pk: primaryKey({ columns: [table.userId, table.normalizedName] }), entryIdx: index("knowledge_names_entry_idx").on(table.entryId) }));
-export const tags = sqliteTable("tags", {
-  id: text("id").primaryKey(), userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  name: text("name").notNull(), normalizedName: text("normalized_name").notNull(), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull()
-}, (table) => ({ nameIdx: uniqueIndex("tags_owner_name_idx").on(table.userId, table.normalizedName) }));
-export const contentTags = sqliteTable("content_tags", {
-  tagId: text("tag_id").notNull().references(() => tags.id, { onDelete: "cascade" }),
-  sourceType: text("source_type", { enum: ["page", "entry"] }).notNull(), sourceId: text("source_id").notNull()
-}, (table) => ({ pk: primaryKey({ columns: [table.tagId, table.sourceType, table.sourceId] }), sourceIdx: index("content_tags_source_idx").on(table.sourceType, table.sourceId) }));
 export type KnowledgeEntry = typeof knowledgeEntries.$inferSelect;

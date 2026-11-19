@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { Download, FileUp, KeyRound, Pencil, Users, Trash2 } from "lucide-react";
+import { useKnowledgeImportConflicts } from "@/components/knowledge-import-conflicts";
 import { useConfirm } from "@/components/ui/alert-dialog";
 
 type AdminUser = { id: string; username: string; createdAt: string; notebookCount: number; pageCount: number; imageCount: number; storageBytes: number };
 export default function AdminUsersPage() {
   const confirm = useConfirm();
+  const { chooseConflictPolicy, conflictDialog } = useKnowledgeImportConflicts();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -93,14 +95,22 @@ export default function AdminUsersPage() {
       const form = new FormData();
       form.append("userId", user.id);
       form.append("file", file);
-      const response = await fetch("/api/admin/restore/user", { method: "POST", body: form });
-      const result = await response.json();
+      let response = await fetch("/api/admin/restore/user", { method: "POST", body: form });
+      let result = await response.json();
+      if (response.status === 409) {
+        const policy = await chooseConflictPolicy(result);
+        if (!policy) return;
+        form.set("conflictPolicy", policy);
+        response = await fetch("/api/admin/restore/user", { method: "POST", body: form });
+        result = await response.json();
+      }
       if (!response.ok) throw new Error(result.error ?? "恢复失败");
-      setSuccess(`恢复完成：${result.restored.notebooks} 个笔记本、${result.restored.pages} 个页面。`);
+      setSuccess(`恢复完成：${result.restored.notebooks} 个笔记本、${result.restored.pages} 个页面，新增 ${result.restored.entries ?? 0} 个词条、复用 ${result.restored.reusedEntries ?? 0} 个、重命名 ${result.restored.renamedEntries ?? 0} 个。`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "恢复失败"); }
     finally { setPending(null); }
   }
   return <>
+    {conflictDialog}
     <h1 className="admin-title">用户管理</h1><p className="admin-description">查看用户数据使用情况、重置密码或导出用户数据</p>
     {error && <p className="form-error" role="alert">{error}</p>}
     {success && <p className="form-success" role="status">{success}</p>}

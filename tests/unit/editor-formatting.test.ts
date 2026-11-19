@@ -42,3 +42,10 @@ describe("editor formatting", () => {
     expect(markup).toContain('width:240px');
   });
 });
+
+it("rendered external links open a separate tab and reject unsafe link schemes", () => {
+  const paragraph = (href: string) => ({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "维基百科", marks: [{ type: "link", attrs: { href } }] }] }] });
+  const html = renderToStaticMarkup(renderDocument(JSON.stringify(paragraph("https://zh.wikipedia.org/wiki/Docker"))));
+  expect(html).toContain('target="_blank"'); expect(html).toContain('rel="noopener noreferrer"');
+  expect(renderToStaticMarkup(renderDocument(JSON.stringify(paragraph("javascript:alert(1)"))))).not.toContain("<a");
+});

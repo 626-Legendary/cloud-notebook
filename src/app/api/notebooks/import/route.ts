@@ -1,3 +1,4 @@
+import { KnowledgeError } from "@/lib/knowledge";
 import { requireUser, authError } from "@/lib/auth";
 import { importNotebookCnf } from "@/lib/cnf";
 import { CnfError, CNF_LIMITS } from "@/lib/cnf-format";
@@ -33,9 +34,10 @@ export async function POST(request: Request) {
     const file = form.get("file");
     if (!(file instanceof File) || !/\.cnf$/i.test(file.name)) return jsonError("请选择 .cnf 笔记本文件");
     if (!file.size || file.size > CNF_LIMITS.compressed) return jsonError("CNF 文件必须为 1 字节至 100 MB", 413);
-    const notebook = await importNotebookCnf(userId, Buffer.from(await file.arrayBuffer()), form.get("reuseExisting") === "true");
+    const notebook = await importNotebookCnf(userId, Buffer.from(await file.arrayBuffer()), form.get("conflictPolicy") === "rename" ? "rename" : form.get("conflictPolicy") === "reuse" || form.get("reuseExisting") === "true" ? "reuse" : "reject");
     return Response.json({ notebook }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
+    if (error instanceof KnowledgeError) return Response.json({ error: error.message, ...error.details }, { status: error.status });
     if (error instanceof CnfError) return jsonError(error.message, error.status);
     const status = authError(error);
     if (status === 500) console.error("CNF import failed", error);

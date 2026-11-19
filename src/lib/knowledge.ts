@@ -9,7 +9,6 @@ export class KnowledgeError extends Error {
   constructor(message: string, public status = 400, public details?: Record<string, unknown>) { super(message); }
 }
 export type EntryRow = { id: string; title: string; content: string; version: number; createdAt: string; updatedAt: string };
-export type Tag = { id: string; name: string };
 const entryColumns = "id,title,content,version,created_at AS createdAt,updated_at AS updatedAt";
 const nameSchema = z.string().trim().min(1).max(120).refine((value) => Boolean(normalizeKnowledgeName(value)), "名称不能为空");
 export const entryCreateSchema = z.object({ title: nameSchema, aliases: z.array(nameSchema).max(50).default([]), content: z.record(z.unknown()).optional() }).strict();
@@ -23,34 +22,27 @@ export function ownSource(userId: string, kind: "page" | "entry", id: string): E
   if (!row) throw new KnowledgeError(kind === "entry" ? "词条不存在或已删除" : "页面不存在", 404);
   return row;
 }
-export function sourceTags(userId: string, kind: "page" | "entry", id: string) {
-  return sqlite.prepare("SELECT t.id,t.name FROM tags t JOIN content_tags c ON c.tag_id=t.id WHERE t.user_id=? AND c.source_type=? AND c.source_id=? ORDER BY t.name").all(userId, kind, id) as Tag[];
-}
 export function entryAliases(userId: string, id: string) {
   return (sqlite.prepare("SELECT name FROM knowledge_names WHERE user_id=? AND entry_id=? AND kind='alias' ORDER BY normalized_name").all(userId, id) as { name: string }[]).map((row) => row.name);
 }
 export function getEntry(userId: string, id: string) {
   const row = ownSource(userId, "entry", id);
-  return { ...row, summary: extractSearchableText(row.content).slice(0, 200), aliases: entryAliases(userId, id), tags: sourceTags(userId, "entry", id) };
+  return { ...row, summary: extractSearchableText(row.content).slice(0, 200), aliases: entryAliases(userId, id) };
 }
-export function listEntries(userId: string, query = "", tagId = "", sort = "updated", catalogOnly = false) {
+export function listEntries(userId: string, query = "", sort = "updated", catalogOnly = false) {
   const rows = sqlite.prepare(`SELECT ${catalogOnly ? "id,title,version,created_at AS createdAt,updated_at AS updatedAt" : entryColumns} FROM knowledge_entries WHERE user_id=? AND deleted_at IS NULL`).iterate(userId) as IterableIterator<EntryRow>;
   const names = sqlite.prepare("SELECT entry_id AS entryId,name FROM knowledge_names WHERE user_id=? AND kind='alias'").all(userId) as { entryId: string; name: string }[];
-  const tags = sqlite.prepare("SELECT c.source_id AS sourceId,t.id,t.name FROM content_tags c JOIN tags t ON t.id=c.tag_id WHERE t.user_id=? AND c.source_type='entry'").all(userId) as (Tag & { sourceId: string })[];
-  const aliasMap = new Map<string, string[]>(), tagMap = new Map<string, Tag[]>();
+  const aliasMap = new Map<string, string[]>();
   for (const name of names) { const items = aliasMap.get(name.entryId) ?? []; items.push(name.name); aliasMap.set(name.entryId, items); }
-  for (const tag of tags) { const items = tagMap.get(tag.sourceId) ?? []; items.push({ id: tag.id, name: tag.name }); tagMap.set(tag.sourceId, items); }
   const titles = new Map((sqlite.prepare("SELECT id,title FROM knowledge_entries WHERE user_id=? AND deleted_at IS NULL").all(userId) as { id: string; title: string }[]).map((entry) => [entry.id, entry.title]));
   const normalizedQuery = normalizeKnowledgeName(query);
   const result = [];
   for (const row of rows) {
     const aliases = aliasMap.get(row.id) ?? [];
-    const entryTags = tagMap.get(row.id) ?? [];
     let summary = "";
     if (!catalogOnly) { try { summary = extractSearchableText(JSON.stringify(resolveKnowledgeLabels(JSON.parse(row.content), titles))); } catch { summary = "正文格式异常"; } }
     if (normalizedQuery && !normalizeKnowledgeName([row.title, ...aliases, summary].join(" ")).includes(normalizedQuery)) continue;
-    if (tagId && !entryTags.some((tag) => tag.id === tagId)) continue;
-    result.push({ id: row.id, title: row.title, aliases, tags: entryTags, summary: summary.slice(0, 200), createdAt: row.createdAt, updatedAt: row.updatedAt });
+    result.push({ id: row.id, title: row.title, aliases, summary: summary.slice(0, 200), createdAt: row.createdAt, updatedAt: row.updatedAt });
   }
   return result.sort((a, b) => sort === "title" ? a.title.localeCompare(b.title, "zh-CN") : sort === "created" ? b.createdAt.localeCompare(a.createdAt) : b.updatedAt.localeCompare(a.updatedAt));
 }
@@ -133,7 +125,7 @@ export function backlinks(userId: string, targetId: string) {
 }
 export function checkReferences(userId: string) {
   return sqlite.transaction(() => {
-    const entries = listEntries(userId, "", "", "updated", true), ids = new Set(entries.map((entry) => entry.id)), used = new Set<string>();
+    const entries = listEntries(userId, "", "updated", true), ids = new Set(entries.map((entry) => entry.id)), used = new Set<string>();
     const issues: { sourceType: "page" | "entry"; sourceId: string; title: string; notebookId: string; path: number[]; entryId: string; label: string; version: number; reason: string }[] = [];
     let validReferences = 0, invalidReferences = 0;
     for (const source of allReferenceSources(userId)) {

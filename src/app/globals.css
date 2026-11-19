@@ -3654,14 +3654,6 @@ small:not(:where(.notebook-editor *, .prose-print *)), .form-dialog-field small 
 .knowledge-entry-row p { margin-block: 6px; color: var(--ui-text-muted); font-size: var(--ui-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .knowledge-entry-row > div { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .knowledge-entry-row time { margin-left: auto; font-size: var(--ui-caption); color: var(--ui-text-muted); }
-.knowledge-tag { display: inline-flex; align-items: center; gap: 4px; border: 1px solid hsl(var(--border)); border-radius: 5px; padding: 2px 6px; font-size: var(--ui-caption); }
-.knowledge-tag button { display: flex; border: none; background: transparent; color: inherit; padding: 0; cursor: pointer; }
-.content-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
-.knowledge-tag-menu { max-width: min(360px, calc(100vw - 24px)); }
-.knowledge-tag-options { display: grid; max-height: 230px; overflow: auto; gap: 8px; margin-bottom: 12px; }
-.knowledge-tag-options label { display: flex; align-items: center; gap: 8px; }
-.knowledge-tag-manager { border: 1px solid hsl(var(--border)); padding: 16px; margin-bottom: 18px; border-radius: 8px; display: grid; gap: 10px; }
-.knowledge-tag-manager .knowledge-controls > span { min-width: 100px; }
 .knowledge-reference { color: var(--ui-text-link); background: color-mix(in srgb, var(--ui-text-link) 10%, transparent); border-radius: 4px; padding-inline: 3px; cursor: pointer; overflow-wrap: anywhere; }
 .knowledge-reference-invalid { color: var(--ui-text-muted); text-decoration: underline dotted; }
 .knowledge-reference-locate { animation: knowledge-locate 1.6s ease-out; }
@@ -3683,7 +3675,7 @@ small:not(:where(.notebook-editor *, .prose-print *)), .form-dialog-field small 
 .knowledge-backlink { display: flex; justify-content: space-between; gap: 10px; width: 100%; padding: 10px; background: transparent; border: 0; text-align: left; color: inherit; cursor: pointer; }
 .knowledge-backlink span { color: var(--ui-text-muted); font-size: var(--ui-secondary); }
 .knowledge-preview-anchor { position: fixed; width: 1px; height: 1px; pointer-events: none; }
-.knowledge-preview { max-width: min(340px, calc(100vw - 24px)); z-index: 150; }
+.knowledge-preview { width: min(340px, calc(100vw - 24px)); z-index: 150; padding: 16px; border: 1px solid hsl(var(--border)); border-radius: 10px; background: var(--paper-surface); color: hsl(var(--foreground)); box-shadow: 0 8px 32px #0003; }
 .knowledge-preview p { margin-block: 10px; overflow-wrap: anywhere; font-size: var(--ui-body); }
 .knowledge-preview .button-outline { margin-top: 10px; }
 .knowledge-check-dialog { width: min(900px, calc(100vw - 32px)); overflow: auto; padding: 20px; gap: 16px; }
@@ -3697,7 +3689,6 @@ small:not(:where(.notebook-editor *, .prose-print *)), .form-dialog-field small 
 .knowledge-repair { border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 16px; display: grid; gap: 12px; }
 .knowledge-import { position: relative; cursor: pointer; }
 .knowledge-import input { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
-.page-tag-filter { margin: 8px 12px; width: calc(100% - 24px); }
 .native-page-export { margin: 12px 20px 0; }
 @media (max-width: 650px) {
   .knowledge-library { padding: 16px; }
@@ -3713,4 +3704,10 @@ small:not(:where(.notebook-editor *, .prose-print *)), .form-dialog-field small 
 
 .knowledge-dialog-header > .knowledge-controls:first-child { min-width: 0; flex: 1; }
 .knowledge-entry-row strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.knowledge-tag { max-width: 100%; overflow-wrap: anywhere; }
+
+.knowledge-import-conflicts { width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; }
+.knowledge-conflict-list { max-height: 35dvh; overflow: auto; margin-block: 16px; padding-inline-start: 20px; }
+.knowledge-conflict-list li { margin-block: 10px; overflow-wrap: anywhere; }
+.knowledge-conflict-list span { display: block; color: var(--ui-text-secondary); }
+.knowledge-import-conflicts .alert-actions { flex-wrap: wrap; }
+.knowledge-import { display: inline-flex; align-items: center; gap: 6px; }

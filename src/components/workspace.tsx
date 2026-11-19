@@ -1,14 +1,15 @@
 "use client";
+import { useKnowledgeImportConflicts } from "@/components/knowledge-import-conflicts";
 
 import { KnowledgeDialogs } from "@/components/knowledge-dialogs";
 import { KnowledgeLibrary, refreshKnowledge, downloadKnowledgeFile } from "@/components/knowledge-library";
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
-  BookOpen, ChevronDown, ChevronRight,
+  BookOpen, LibraryBig, ChevronDown, ChevronRight,
   Download, Ellipsis, FilePlus2, FileText, Folder, FolderOpen, Laptop, MoreHorizontal, NotebookPen, Pin, PinOff, Pencil,
   Check, ChevronRight as MenuChevron, LogOut, Moon, Sun, Monitor, UserRound, Save, Plus, Search, Settings, Trash2, X, GripVertical, PanelLeftClose,
   PanelLeftOpen, ArrowDownWideNarrow, Image as ImageIcon
@@ -47,7 +48,7 @@ const PageEditor = dynamic(() => import("@/components/page-editor").then((module
 
 type FolderItem = Pick<FolderRecord, "id" | "name" | "isDefault" | "sortOrder">;
 type NotebookItem = Pick<Notebook, "id" | "folderId" | "title" | "coverAssetId" | "updatedAt" | "pinnedAt" | "pinSortOrder">;
-type PageItem = Pick<Page, "id" | "notebookId" | "title" | "sortOrder" | "version" | "updatedAt" | "createdAt" | "pinnedAt" | "pinSortOrder"> & { summary?: string; tagIds?: string[] };
+type PageItem = Pick<Page, "id" | "notebookId" | "title" | "sortOrder" | "version" | "updatedAt" | "createdAt" | "pinnedAt" | "pinSortOrder"> & { summary?: string };
 type SessionUser = { id: string; username: string; createdAt: string; role: string };
 type Settings = { theme: "system" | "light" | "dark"; autoSaveMode: string; sidebarCollapsed: boolean };
 type SnapshotItem = { id: string; title: string; createdAt: string };
@@ -74,6 +75,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
   const { setTheme } = useTheme();
   const typography = useUiTypography();
   const confirm = useConfirm();
+  const { chooseConflictPolicy, conflictDialog } = useKnowledgeImportConflicts();
   const ask = useFormDialog();
   const [pagesPanelWidth, setPagesPanelWidth] = useState(() => {
     if (typeof window === "undefined") return MIN_PAGES_WIDTH;
@@ -84,9 +86,14 @@ export function Workspace({ appVersion }: { appVersion: string }) {
     const timer = setTimeout(() => { try { localStorage.setItem(pagesWidthStorageKey, String(pagesPanelWidth)); } catch { /* Layout remains usable without browser storage. */ } }, 150);
     return () => clearTimeout(timer);
   }, [pagesPanelWidth]);
-  const [knowledgeOpen, setKnowledgeOpen] = useState(false);
-  const [pageTagFilter, setPageTagFilter] = useState("");
-  const [globalTags, setGlobalTags] = useState<{ id: string; name: string }[]>([]);
+  const pathname = usePathname();
+  const knowledgeOpen = pathname === "/app/library";
+  function setKnowledgeOpen(open: boolean) {
+    const url = new URL(window.location.href);
+    if ((url.pathname === "/app/library") === open) return;
+    url.pathname = open ? "/app/library" : "/app";
+    window.history.pushState(null, "", url);
+  }
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const navigationRestored = useRef(false);
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -344,8 +351,9 @@ export function Workspace({ appVersion }: { appVersion: string }) {
       let response = await fetch("/api/notebooks/import", { method: "POST", body: form });
       if (response.status === 409) {
         const conflict = await response.json();
-        if (!await confirm(conflict.error + "。是否复用已有词条？不会覆盖其正文或别名。", "导入词条冲突")) return;
-        form.set("reuseExisting", "true"); response = await fetch("/api/notebooks/import", { method: "POST", body: form });
+        const policy = await chooseConflictPolicy(conflict);
+        if (!policy) return;
+        form.set("conflictPolicy", policy); response = await fetch("/api/notebooks/import", { method: "POST", body: form });
       }
       const result = await response.json(); if (!response.ok) throw new Error(result.error ?? "导入失败");
       await loadWorkspace(); refreshKnowledge();
@@ -786,16 +794,6 @@ export function Workspace({ appVersion }: { appVersion: string }) {
   }
 
 
-  useEffect(() => {
-    const controller = new AbortController();
-    const load = () => {
-      void requestJson<{ tags: { id: string; name: string }[] }>("/api/tags", { signal: controller.signal }).then((data) => { if (!controller.signal.aborted) setGlobalTags(data.tags); }).catch(() => {});
-      if (selectedNotebook) void requestJson<{ pages: PageItem[] }>(`/api/notebooks/${selectedNotebook.id}/pages`, { signal: controller.signal }).then((data) => { if (!controller.signal.aborted) setPages(data.pages); }).catch(() => {});
-    };
-    window.addEventListener("cloud-notebook:tags-change", load); load();
-    return () => { controller.abort(); window.removeEventListener("cloud-notebook:tags-change", load); };
-  }, [selectedNotebook]);
-
   async function navigateKnowledgeSource(id: string, target?: string) {
     try {
       if (selectedPage) await flushPageEdits(selectedPage.id);
@@ -816,12 +814,12 @@ export function Workspace({ appVersion }: { appVersion: string }) {
   }
 
   const visiblePages = useMemo(() => {
-    const filtered = pageTagFilter ? pages.filter((page) => page.tagIds?.includes(pageTagFilter)) : pages;
+    const filtered = pages;
     if (sortMode === "updated") return [...filtered].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     if (sortMode === "created") return [...filtered].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     if (sortMode === "title") return [...filtered].sort((a, b) => a.title.localeCompare(b.title, "zh-CN"));
     return filtered;
-  }, [pages, sortMode, pageTagFilter]);
+  }, [pages, sortMode]);
 
   function navigateFolder(folderId: string) {
     setKnowledgeOpen(false);
@@ -847,6 +845,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
   return (
     <main style={{ "--pages-panel-width": `${pagesPanelWidth}px` } as CSSProperties} className={`workspace ${isHome ? "notebook-home-layout" : ""} ${settings.sidebarCollapsed ? "sidebar-collapsed" : ""} ${showPages ? "show-pages" : ""} ${showSidebar ? "show-sidebar" : ""}`}>
       <LogoutProgress pending={loggingOut} />
+      {conflictDialog}
       <KnowledgeDialogs autoSaveMode={settings.autoSaveMode} activePageId={selectedPage?.id} onNavigatePage={navigateKnowledgeSource} onRepaired={async (id, type) => { if (type === "page" && selectedPage?.id === id) { const { page } = await requestJson<{ page: Page }>(`/api/pages/${id}`); setSelectedPage(page); setEditorReset((value) => value + 1); } }} />
       <aside className="sidebar">
         <div className="brand-row">
@@ -936,7 +935,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
             </section>;
           })}
         </ScrollArea>
-        <button className={`sidebar-knowledge-button ${knowledgeOpen ? "active" : ""}`} type="button" aria-current={knowledgeOpen ? "page" : undefined} onClick={() => void (async () => { try { if (selectedPage) await flushPageEdits(selectedPage.id); setKnowledgeOpen(true); setTrashOpen(false); setShowSidebar(false); refreshKnowledge(); } catch (error) { setError(error instanceof Error ? error.message : "请先保存页面"); } })()}><BookOpen size={15} />知识库</button>
+        <button className={`sidebar-knowledge-button ${knowledgeOpen ? "active" : ""}`} type="button" aria-current={knowledgeOpen ? "page" : undefined} onClick={() => void (async () => { try { if (selectedPage) await flushPageEdits(selectedPage.id); setKnowledgeOpen(true); setTrashOpen(false); setShowSidebar(false); refreshKnowledge(); } catch (error) { setError(error instanceof Error ? error.message : "请先保存页面"); } })()}><LibraryBig size={15} />知识库</button>
         <button className={`sidebar-trash-button ${trashOpen ? "active" : ""}`} aria-current={trashOpen ? "page" : undefined} type="button" onClick={() => void openTrash()}><Trash2 size={15} />垃圾箱</button>
         <footer className="sidebar-footer">
           <span className="user-avatar">{user?.username?.slice(0, 1).toLocaleUpperCase() ?? "U"}</span>
@@ -1011,7 +1010,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
               <strong className="text-ui-body" title={selectedNotebook.title}>{selectedNotebook.title}</strong>
               <span>{pages.length} 个页面</span>
             </div>
-            <DropdownMenu.Root><DropdownMenu.Trigger asChild><button type="button" className="button-outline page-tag-filter" aria-label="页面标签筛选">{globalTags.find((tag) => tag.id === pageTagFilter)?.name ?? "全部标签"}<ChevronDown size={13} /></button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="dropdown-menu" side="bottom" align="start" sideOffset={6}><DropdownMenu.RadioGroup value={pageTagFilter} onValueChange={setPageTagFilter}><DropdownMenu.RadioItem className="dropdown-item" value="">全部标签</DropdownMenu.RadioItem>{globalTags.map((tag) => <DropdownMenu.RadioItem className="dropdown-item" value={tag.id} key={tag.id}>{tag.name}</DropdownMenu.RadioItem>)}</DropdownMenu.RadioGroup></DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root>
+
             <div className="page-list-heading">
               <span>页面</span>
               <DropdownMenu.Root>

@@ -6,7 +6,6 @@ import { beforeEach, afterEach, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ sqlite: undefined as unknown as Database.Database }));
 vi.mock("@/db", () => ({ get sqlite() { return state.sqlite; } }));
 import { createEntry, getEntry, listEntries, updateEntry, deleteEntry, backlinks, checkReferences, repairReference, validateKnowledgeContent } from "@/lib/knowledge";
-import { applyTagAction, listTags } from "@/lib/tags";
 let owner: string, other: string, notebook: string;
 const now = "2026-11-18T00:00:00.000Z";
 const textDoc = (text: string) => ({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] });
@@ -66,13 +65,11 @@ it("relinks to an owned entry, reports malformed metadata, and keeps unreference
   repairReference(owner, { ...pick(report.issues[0]), targetId: b.id }); report = checkReferences(owner); expect(report.statistics.validReferences).toBe(1); expect(report.statistics.unreferencedEntries).toBe(1); expect(getEntry(owner, a.id)).toBeDefined();
   const foreign = createEntry(other, { title: "私有词条", aliases: [] }); expect(() => validateKnowledgeContent(owner, refDoc(foreign.id))).toThrow("不可访问");
 });
-it("shares tags across pages/entries and merges/deletes only relationships with owner checks", () => {
-  const first = entry("标签词条"), source = page(textDoc("标签页面"));
-  applyTagAction(owner, { action: "create", name: "学习" }); applyTagAction(owner, { action: "create", name: "工作" });
-  const [a,b] = listTags(owner); expect(() => applyTagAction(owner, { action: "create", name: a.name })).toThrow("已存在");
-  applyTagAction(owner, { action: "assign", sourceType: "entry", sourceId: first.id, tagIds: [a.id] }); applyTagAction(owner, { action: "assign", sourceType: "page", sourceId: source, tagIds: [a.id,b.id] });
-  expect(() => applyTagAction(other, { action: "assign", sourceType: "page", sourceId: source, tagIds: [a.id] })).toThrow("不存在");
-  applyTagAction(owner, { action: "rename", id: a.id, name: "共享标签" }); expect(getEntry(owner, first.id).tags[0].name).toBe("共享标签");
-  applyTagAction(owner, { action: "merge", id: a.id, targetId: b.id }); expect(getEntry(owner, first.id).tags.map((tag) => tag.id)).toEqual([b.id]); expect(listEntries(owner, "", b.id)).toHaveLength(1);
-  applyTagAction(owner, { action: "delete", id: b.id }); expect(getEntry(owner, first.id).tags).toHaveLength(0); expect(state.sqlite.prepare("SELECT id FROM pages WHERE id=?").get(source)).toBeTruthy();
+
+it("renamed imports reserve incoming and existing names before generating unique suffixes", async () => {
+  const { planKnowledgeImport } = await import("@/lib/knowledge-import");
+  const existing = entry("名称", ["Alias"]); const foreign=createEntry(other,{title:"仅其他账号存在",aliases:[]});
+  const incoming = [{ id: randomUUID(), title: "名称", aliases: ["Alias"] }, { id: randomUUID(), title: "名称（导入 1）", aliases: [] }, { id: randomUUID(), title: foreign.title, aliases: [] }];
+  const plans = planKnowledgeImport(owner,incoming,"rename");expect(plans[0].title).toBe("名称（导入 2）");expect(plans[0].aliases).toEqual(["Alias（导入 1）"]);expect(plans[2].title).toBe(foreign.title);
+  expect(getEntry(owner,existing.id)).toEqual(existing);expect(listEntries(owner)).toHaveLength(1);
 });

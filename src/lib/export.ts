@@ -7,7 +7,7 @@ import { databaseFile, db, sqlite } from "@/db";
 import { assets, folders, noteSnapshots, notebooks, pages, users } from "@/db/schema";
 import { extensionForMime } from "@/lib/images";
 import { contentToMarkdown } from "@/lib/markdown";
-import { getEntry, sourceTags } from "@/lib/knowledge";
+import { getEntry } from "@/lib/knowledge";
 import type { CnfKnowledge } from "@/lib/cnf-format";
 import { safeFileName } from "@/lib/filename";
 
@@ -29,11 +29,9 @@ export async function createUserExport(userId: string) {
   });
   const knowledge = sqlite.transaction((): CnfKnowledge => {
     const entries = sqlite.prepare("SELECT id FROM knowledge_entries WHERE user_id=? AND deleted_at IS NULL").all(userId) as { id: string }[];
-    const pageIds = sqlite.prepare("SELECT id FROM pages WHERE user_id=?").all(userId) as { id: string }[];
     return {
-      entries: entries.map(({ id }) => { const entry = getEntry(userId, id); return { id, title: entry.title, aliases: entry.aliases, content: JSON.parse(entry.content) as Record<string, unknown>, createdAt: entry.createdAt, updatedAt: entry.updatedAt, tagIds: entry.tags.map((tag) => tag.id) }; }),
-      tags: sqlite.prepare("SELECT id,name FROM tags WHERE user_id=?").all(userId) as { id: string; name: string }[],
-      pageTags: pageIds.map(({ id }) => ({ pageId: id, tagIds: sourceTags(userId, "page", id).map((tag) => tag.id) }))
+      entries: entries.map(({ id }) => { const entry = getEntry(userId, id); return { id, title: entry.title, aliases: entry.aliases, content: JSON.parse(entry.content) as Record<string, unknown>, createdAt: entry.createdAt, updatedAt: entry.updatedAt, tagIds: [] }; }),
+      tags: [], pageTags: []
     };
   })();
   const stream = new PassThrough();

@@ -62,7 +62,7 @@ test("manual @ mentions preserve email/code/paste/IME and create only on explici
   await editor.pressSequentially("```"); await editor.press("Space"); await editor.pressSequentially("@test"); await expect(menu).not.toBeVisible();
 });
 
-test("reference checks repair exact occurrences and tags are shared, filtered, renamed, merged and deleted", async ({ page, baseURL }) => {
+test("reference checks repair exact occurrences without retired tag controls", async ({ page, baseURL }) => {
   const { headers, note, a } = await setup(page, baseURL!);
   await page.request.patch(`/api/pages/${note.id}`, { headers, data: { version: 1, content: { type: "doc", content: [{ type: "paragraph", content: [reference(a.id,a.title), reference(a.id,a.title)] }] } } });
   await page.request.delete(`/api/knowledge/${a.id}`, { headers });
@@ -72,14 +72,8 @@ test("reference checks repair exact occurrences and tags are shared, filtered, r
   const source = check.locator(".knowledge-check-issue").filter({ hasText: "引用来源页面" }); await source.first().getByRole("button", { name: "修复此处引用" }).click(); await check.getByRole("button", { name: "转换为普通文字", exact: true }).click(); await expect(check.locator(".knowledge-check-issue")).toHaveCount(2);
   await source.first().getByRole("button", { name: "修复此处引用" }).click(); await check.getByLabel("搜索修复目标词条").fill("恢复操作系统"); await check.getByRole("button", { name: "创建词条并重新关联", exact: true }).click(); await expect(check.locator(".knowledge-check-issue")).toHaveCount(1);
   await check.getByLabel("关闭引用检查").click(); await expect(editor.locator("[data-knowledge-reference]")).toHaveCount(1); await expect(editor).toContainText("@操作系统");
-  await page.getByLabel("设置标签", { exact: true }).click(); await page.getByLabel("新标签名称").fill("学习"); await page.getByRole("button", { name: "新建标签", exact: true }).click(); await page.getByLabel("学习", { exact: true }).check(); await page.keyboard.press("Escape");
-  await expect(page.locator(".content-tags")).toContainText("学习"); await page.getByRole("button", { name: "页面标签筛选", exact: true }).click(); await expect(page.getByRole("menuitemradio")).toHaveCount(2); await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "页面标签筛选", exact: true }).click(); await page.getByRole("menuitemradio", { name: "学习", exact: true }).click(); await expect(page.locator(".page-row-open")).toHaveCount(1);
-  await page.getByRole("button", { name: "知识库", exact: true }).click(); await page.getByRole("button", { name: "管理标签", exact: true }).click(); const manager = page.locator(".knowledge-tag-manager");
-  await manager.getByRole("button", { name: "重命名", exact: true }).click(); const form = page.getByRole("dialog", { name: "重命名标签", exact: true }); await form.getByLabel("标签名称").fill("共享学习"); await form.getByRole("button", { name: "确定", exact: true }).click(); await expect(manager).toContainText("共享学习");
-  await manager.getByLabel("创建全局标签").fill("目标分类"); await manager.getByRole("button", { name: "新建标签", exact: true }).click();
-  await manager.getByLabel("合并标签共享学习", { exact: true }).selectOption({ label: "目标分类" }); await page.getByRole("alertdialog").getByRole("button", { name: "合并标签", exact: true }).click(); await expect(manager.getByText("共享学习", { exact: true })).toHaveCount(0);
-  await manager.getByRole("button", { name: "删除", exact: true }).click(); await page.getByRole("alertdialog").getByRole("button", { name: "删除标签", exact: true }).click(); await expect(manager.getByText("目标分类", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("设置标签", { exact: true })).toHaveCount(0);
+  expect((await page.request.get("/api/tags")).status()).toBe(404);
 });
 
 test("knowledge HTTP ownership, same-origin, versions and CNF2 scopes are enforced", async ({ page, baseURL, playwright }) => {
@@ -97,23 +91,20 @@ test("knowledge HTTP ownership, same-origin, versions and CNF2 scopes are enforc
   expect((await page.request.get(`/api/pages/${note.id}/cnf`)).ok()).toBe(true);
 });
 
-test("new empty entries reuse the editor for references, tags, keyboard save, modal navigation and self-reference guards", async ({ page, baseURL }) => {
+test("new empty entries reuse the editor for references, keyboard save, modal navigation and self-reference guards", async ({ page, baseURL }) => {
   const { headers, note, a } = await setup(page, baseURL!);
-  await page.request.post("/api/tags", { headers, data: { action: "create", name: "词条分类" } });
   await page.goto(`/app?page=${note.id}`); await expect(page.locator(".notebook-editor")).toBeVisible();
   await page.getByRole("button", { name: "知识库", exact: true }).click(); await page.getByRole("button", { name: "新建词条", exact: true }).click();
   const form = page.getByRole("dialog", { name: "新建词条", exact: true }); await form.getByLabel("正式名称").fill("独立词条"); await form.getByRole("button", { name: "创建词条", exact: true }).click();
   const modal = page.locator(".knowledge-dialog"); await expect(modal.getByRole("heading", { name: "独立词条", exact: true })).toBeVisible(); await modal.getByRole("button", { name: "编辑词条", exact: true }).click();
   const editor = modal.locator(".notebook-editor"); await expect(editor).toBeVisible(); await editor.pressSequentially("@OS"); await editor.press("Enter"); await expect(editor.locator(`[data-entry-id="${a.id}"]`)).toHaveCount(1);
   await editor.pressSequentially("@独立词条"); await expect(page.getByRole("option", { name: "创建词条「独立词条」" })).toHaveCount(0); await editor.press("Escape"); await expect(modal).toBeVisible(); await expect(editor).toContainText("@独立词条");
-  await modal.getByLabel("设置标签", { exact: true }).click(); await page.getByLabel("词条分类", { exact: true }).check(); await page.keyboard.press("Escape");
   await editor.click(); await editor.press("Control+s");
   const entry = (await (await page.request.get("/api/knowledge?q=独立词条")).json()).entries.find((item: { title: string }) => item.title === "独立词条");
   await expect.poll(async () => (await (await page.request.get(`/api/knowledge/${entry.id}`)).json()).entry.content).toContain(a.id);
-  await expect.poll(async () => (await (await page.request.get(`/api/knowledge/${entry.id}`)).json()).entry.tags.map((tag: { name: string }) => tag.name)).toEqual(["词条分类"]);
   await editor.locator(`[data-entry-id="${a.id}"]`).click(); await expect(modal.getByRole("heading", { name: "操作系统", exact: true })).toBeVisible(); await expect(page.locator(".knowledge-dialog")).toHaveCount(1);
   await modal.getByLabel("返回上一词条", { exact: true }).click(); await expect(modal.getByRole("heading", { name: "独立词条", exact: true })).toBeVisible(); await modal.getByLabel("关闭词条", { exact: true }).click();
-  await page.getByLabel("词条标签筛选", { exact: true }).selectOption({ label: "词条分类" }); await expect(page.locator(".knowledge-entry-row")).toHaveCount(1); await expect(page.locator(".knowledge-entry-row")).toContainText("独立词条");
+  await expect(page.getByLabel("词条标签筛选", { exact: true })).toHaveCount(0); await expect(page.locator(".knowledge-entry-row")).toContainText(["独立词条", "操作系统", "虚拟内存"]);
 });
 
 
@@ -131,4 +122,45 @@ test("entry alias conflicts retain edits and never adopt an external version to 
   await modal.getByLabel("关闭词条", { exact: true }).click(); const confirmation = page.getByRole("alertdialog"); await expect(confirmation).toBeVisible(); await confirmation.getByRole("button", { name: "取消", exact: true }).click(); await expect(modal).toBeVisible();
   await modal.getByLabel("关闭词条", { exact: true }).click(); await page.getByRole("alertdialog").getByRole("button", { name: "仍然关闭", exact: true }).click(); await expect(modal).not.toBeVisible();
   expect((await (await page.request.get(`/api/knowledge/${a.id}`)).json()).entry.aliases).toEqual(["外部别名"]);
+});
+
+test("library route survives refresh and history, previews are opaque in both themes, and external links use a new tab", async ({ page, baseURL }, testInfo) => {
+  const { headers, note, a } = await setup(page, baseURL!);
+  const content = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "维基百科", marks: [{ type: "link", attrs: { href: "https://zh.wikipedia.org/wiki/Docker" } }] }] }] };
+  const current = (await (await page.request.get(`/api/knowledge/${a.id}`)).json()).entry;
+  expect((await page.request.patch(`/api/knowledge/${a.id}`, { headers, data: { version: current.version, content } })).ok()).toBe(true);
+  expect((await page.request.patch(`/api/pages/${note.id}`, { headers, data: { version: 1, content: { type: "doc", content: [{ type: "paragraph", content: [reference(a.id,a.title)] }] } } })).ok()).toBe(true);
+  await page.goto(`/app?page=${note.id}`); await page.locator(".notebook-editor [data-knowledge-reference]").click();
+  const preview=page.locator(".knowledge-preview"); await expect(preview).toBeVisible(); await expect(preview).toContainText("维基百科");
+  const light=await preview.evaluate((element)=>getComputedStyle(element).backgroundColor); expect(light).not.toMatch(/transparent|rgba\([^)]*,\s*0\)/);
+  await page.evaluate(()=>document.documentElement.classList.add("dark")); const dark=await preview.evaluate((element)=>getComputedStyle(element).backgroundColor); expect(dark).not.toBe(light); expect(dark).not.toMatch(/transparent|rgba\([^)]*,\s*0\)/);
+  await page.screenshot({path:testInfo.outputPath("knowledge-preview-dark.png")});
+  await page.context().route("https://zh.wikipedia.org/**",route=>route.fulfill({contentType:"text/html",body:"<p>外链测试</p>"}));
+  await preview.getByRole("button",{name:"查看完整词条",exact:true}).click(); const modal=page.locator(".knowledge-dialog"); const link=modal.getByRole("link",{name:"维基百科",exact:true}); await expect(link).toHaveAttribute("rel","noopener noreferrer");
+  const opened=page.waitForEvent("popup"); await link.click(); const popup=await opened; await popup.waitForLoadState(); expect(popup.url()).toContain("zh.wikipedia.org/wiki/Docker"); expect(new URL(page.url()).pathname).toBe("/app"); await popup.close(); await expect(modal).toBeVisible(); await modal.getByLabel("关闭词条",{exact:true}).click();
+  await page.getByRole("button",{name:"知识库",exact:true}).click(); await expect(page).toHaveURL(/\/app\/library(?:\?|$)/); await expect(page.locator(".sidebar-knowledge-button svg")).toHaveClass(/lucide-library-big/); await expect(page.locator(".knowledge-import svg")).toHaveClass(/lucide-file-up/);
+  await page.reload(); await expect(page.locator(".knowledge-library")).toBeVisible(); await expect(page.getByRole("button",{name:"管理标签",exact:true})).toHaveCount(0);
+  await page.getByRole("button",{name:"返回笔记本",exact:true}).click(); await expect(page).toHaveURL(/\/app(?:\?|$)/); await page.goBack(); await expect(page.locator(".knowledge-library")).toBeVisible(); await expect(page).toHaveURL(/\/app\/library(?:\?|$)/);
+  // A concurrent-target 409 without a conflict list is an error, not a broken chooser.
+  await page.route("**/api/notebooks/import",route=>route.fulfill({status:409,json:{error:"目标知识库已改变，请重新导入"}}));
+  await page.getByLabel("导入知识库文件",{exact:true}).setInputFiles({name:"conflict.cnf",mimeType:"application/zip",buffer:Buffer.from("test")});
+  await expect(page.getByText("导入目标已发生变化，请重新选择文件后重试",{exact:true})).toBeVisible(); await expect(page.getByRole("dialog",{name:"处理导入词条冲突",exact:true})).toHaveCount(0);
+
+});
+
+test("administrator restore lists conflicts and supports cancel, reuse and keeping both with remapped references",async({page,baseURL})=>{
+  const {headers,a}=await setup(page,baseURL!); const owner=(await (await page.request.get("/api/auth/me")).json()).user;
+  const pwd=process.env.E2E_ADMIN_PASSWORD; if(!pwd) throw new Error("Disposable admin password required");
+  expect((await page.request.post("/api/auth/login",{headers,data:{username:"admin",password:pwd}})).ok()).toBe(true);
+  const me=(await (await page.request.get("/api/auth/me")).json()).user;
+  if(me.mustChangePassword){expect((await page.request.post("/api/auth/change-password",{headers,data:{password:pwd,confirmPassword:pwd}})).ok()).toBe(true);expect((await page.request.post("/api/auth/login",{headers,data:{username:"admin",password:pwd}})).ok()).toBe(true);}
+  const exported=await page.request.get(`/api/admin/users/${owner.id}/export`); expect(exported.ok()).toBe(true); const zip={name:"user-backup.zip",mimeType:"application/zip",buffer:await exported.body()};
+  await page.goto("/admin/users"); const row=page.locator(".admin-user-row").filter({has:page.locator(".admin-user-main strong").filter({hasText:new RegExp(`^${owner.username}$`)})});
+  async function select(){await row.locator('input[type="file"]').setInputFiles(zip); await page.getByRole("alertdialog").getByRole("button",{name:"恢复备份",exact:true}).click(); await expect(page.getByRole("dialog",{name:"处理导入词条冲突",exact:true})).toBeVisible();}
+  await select(); const conflict=page.getByRole("dialog",{name:"处理导入词条冲突",exact:true}); await expect(conflict.locator("li")).toHaveCount(2); await conflict.getByRole("button",{name:"取消导入",exact:true}).click(); await expect(row.locator('input[type="file"]')).toBeEnabled();
+  await select(); await conflict.getByRole("button",{name:"复用已有词条",exact:true}).click(); await expect(page.getByRole("status")).toContainText("复用 2 个");
+  await select(); await conflict.getByRole("button",{name:"保留双方并重命名",exact:true}).click(); await expect(page.getByRole("status")).toContainText("重命名 2 个");
+  expect((await page.request.post("/api/auth/login",{headers,data:{username:owner.username,password:"BrowserTest12345"}})).ok()).toBe(true);
+  const original=(await (await page.request.get(`/api/knowledge/${a.id}`)).json()).entry; expect(original.title).toBe("操作系统"); const list=(await (await page.request.get("/api/knowledge")).json()).entries; expect(list).toHaveLength(4); expect(list.map((item:{title:string})=>item.title)).toContain("操作系统（导入 1）");
+  const renamed=list.find((item:{title:string})=>item.title==="操作系统（导入 1）"); const detail=(await (await page.request.get(`/api/knowledge/${renamed.id}`)).json()).entry; const renamedTarget=list.find((item:{title:string})=>item.title==="虚拟内存（导入 1）"); expect(detail.content).toContain(renamedTarget.id);
 });

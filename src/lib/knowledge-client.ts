@@ -1,7 +1,7 @@
 "use client";
 import type { NodeViewConstructor } from "@tiptap/pm/view";
 
-export type KnowledgeSummary = { id: string; title: string; aliases: string[]; summary: string; tags: { id: string; name: string }[]; createdAt: string; updatedAt: string };
+export type KnowledgeSummary = { id: string; title: string; aliases: string[]; summary: string; createdAt: string; updatedAt: string };
 let entries: KnowledgeSummary[] = [], loaded = false;
 let entryIndex = new Map<string, KnowledgeSummary>();
 const listeners = new Set<() => void>();

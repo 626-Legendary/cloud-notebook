@@ -116,24 +116,24 @@ it("validates checksums, unsupported versions/nodes/attributes, duplicate pages 
   expect(state.sqlite.prepare("SELECT count(*) AS n FROM notebooks WHERE user_id=?").get(other)).toEqual({ n: 0 });
 });
 
-it("CNF2 page/notebook scopes pack only directly referenced entries and remap labels, tags and unresolved targets", async () => {
+it("CNF2 page/notebook scopes pack only directly referenced entries and remap labels and unresolved targets without exporting retired tags", async () => {
   const { createEntry, getEntry, updateEntry, checkReferences } = await import("@/lib/knowledge");
-  const { applyTagAction, listTags } = await import("@/lib/tags");
   const { exportPageCnf } = await import("@/lib/cnf");
   const a = createEntry(owner, { title: "操作系统", aliases: ["OS"] }), b = createEntry(owner, { title: "虚拟内存", aliases: [] });
   const reference = (id: string, label: string) => ({ type: "knowledgeReference", attrs: { entryId: id, label, referenceType: "entry" } });
   updateEntry(owner, a.id, { version: a.version, content: { type: "doc", content: [{ type: "paragraph", content: [reference(b.id, b.title)] }, { type: "image", attrs: { assetId, src: `/uploads/notes/${assetId}` } }] } });
   const content = { type: "doc", content: [{ type: "paragraph", content: [reference(a.id, a.title), reference(a.id, a.title)] }] };
   state.sqlite.prepare("UPDATE pages SET content=? WHERE id=?").run(JSON.stringify(content), firstPage);
-  applyTagAction(owner, { action: "create", name: "学习" }); const tag = listTags(owner)[0];
-  applyTagAction(owner, { action: "assign", sourceType: "page", sourceId: firstPage, tagIds: [tag.id] }); applyTagAction(owner, { action: "assign", sourceType: "entry", sourceId: a.id, tagIds: [tag.id] });
+  const legacyTag = randomUUID();
+  state.sqlite.prepare("INSERT INTO tags (id,user_id,name,normalized_name,created_at,updated_at) VALUES (?,?,'旧标签','旧标签',?,?)").run(legacyTag,owner,now,now);
+  state.sqlite.prepare("INSERT INTO content_tags (tag_id,source_type,source_id) VALUES (?,'page',?)").run(legacyTag,firstPage);
   const archive = await parseCnf((await exportPageCnf(owner, firstPage)).bytes);
   expect(archive.manifest.formatVersion).toBe(2); expect(archive.manifest.scope).toBe("page"); expect(archive.notebook.pages).toHaveLength(1);
   expect(archive.knowledge.entries.map((item) => item.id)).toEqual([a.id]); expect(archive.manifest.assets).toHaveLength(1);
   const imported = await importNotebookCnf(other, (await exportPageCnf(owner, firstPage)).bytes);
   const next = await parseCnf((await exportNotebookCnf(other, imported.id)).bytes);
   expect(next.knowledge.entries).toHaveLength(1); expect(next.knowledge.entries[0].id).not.toBe(a.id); expect(next.knowledge.entries[0].aliases).toEqual(["OS"]);
-  expect(next.knowledge.pageTags[0].tagIds[0]).not.toBe(tag.id); expect(next.knowledge.tags[0].name).toBe("学习");
+  expect(next.knowledge.pageTags).toEqual([]); expect(next.knowledge.tags).toEqual([]); expect(state.sqlite.prepare("SELECT id FROM tags WHERE id=?").get(legacyTag)).toEqual({ id: legacyTag });
   const unresolved = checkReferences(other); expect(unresolved.statistics.validReferences).toBe(2); expect(unresolved.statistics.invalidReferences).toBe(1);
   expect(unresolved.issues[0].entryId).toBe(b.id);
   // Imported unresolved references remain editable, without granting access to the original owner.
@@ -141,7 +141,7 @@ it("CNF2 page/notebook scopes pack only directly referenced entries and remap la
 });
 
 it("independent knowledge export includes unreferenced entries and restores cycles without recursive packing", async () => {
-  const { createEntry, updateEntry, listEntries, checkReferences } = await import("@/lib/knowledge"); const { exportKnowledgeCnf } = await import("@/lib/cnf");
+  const { createEntry, getEntry, updateEntry, listEntries, checkReferences } = await import("@/lib/knowledge"); const { exportKnowledgeCnf } = await import("@/lib/cnf");
   const a = createEntry(owner, { title: "A", aliases: ["AA"] }), b = createEntry(owner, { title: "B", aliases: [] }); createEntry(owner, { title: "没有被引用的知识", aliases: [] });
   const document = (id: string) => ({ type: "doc", content: [{ type: "paragraph", content: [{ type: "knowledgeReference", attrs: { entryId: id, label: "原名称", referenceType: "entry" } }] }] });
   updateEntry(owner, a.id, { version: 1, content: document(b.id) }); updateEntry(owner, b.id, { version: 1, content: document(a.id) });
@@ -151,6 +151,11 @@ it("independent knowledge export includes unreferenced entries and restores cycl
   expect(state.sqlite.prepare("SELECT COUNT(*) AS n FROM notebooks WHERE user_id=?").get(other)).toEqual(before);
   await expect(importNotebookCnf(other, exported.bytes)).rejects.toThrow("冲突"); expect(listEntries(other)).toHaveLength(3);
   const reused = await importNotebookCnf(other, exported.bytes, true); expect(reused.reusedEntries).toBe(3); expect(listEntries(other)).toHaveLength(3);
+  const renamed = await importNotebookCnf(other, exported.bytes, "rename"); expect(renamed.renamedEntries).toBe(3); expect(listEntries(other)).toHaveLength(6);
+  const newA = listEntries(other).find((item) => item.title === "A（导入 1）")!, newB = listEntries(other).find((item) => item.title === "B（导入 1）")!;
+  expect(getEntry(other,newA.id).content).toContain(newB.id); expect(getEntry(other,newB.id).content).toContain(newA.id);
+  expect(newA.aliases).toEqual(["AA（导入 1）"]);
+
 });
 
 it("rejects corrupt knowledge data and atomically rolls back entry failures and written resource files", async () => {

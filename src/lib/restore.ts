@@ -1,3 +1,4 @@
+import { planKnowledgeImport, type ImportPolicy } from "@/lib/knowledge-import";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -30,7 +31,7 @@ const assetSchema = z.array(z.object({
   originalName: z.string().max(200), size: z.number().int().positive().max(10 * 1024 * 1024), createdAt: z.string()
 })).max(20_000);
 
-export async function restoreUserArchive(targetUserId: string, compressed: Buffer) {
+export async function restoreUserArchive(targetUserId: string, compressed: Buffer, policy: ImportPolicy = "reject") {
   if (compressed.length > 100 * 1024 * 1024) throw new Error("备份文件不能超过 100 MB");
   const entries = await readZipEntries(compressed, 200 * 1024 * 1024, 200 * 1024 * 1024);
   const json = (name: string) => {
@@ -55,15 +56,13 @@ export async function restoreUserArchive(targetUserId: string, compressed: Buffe
   const importedAssets = assetSchema.parse(json("assets.json"));
   const knowledge = manifest.data.formatVersion === 2 ? cnfKnowledgeSchema.parse(json("knowledge.json")) : { entries: [], tags: [], pageTags: [] };
   if (manifest.data.formatVersion === 2 && (manifest.data.knowledgeCount !== knowledge.entries.length || manifest.data.tagCount !== knowledge.tags.length)) throw new Error("知识库备份清单与数据不一致");
-  const entryIds = new Map<string, string>(), tagIds = new Map<string, string>();
-  const names = new Set<string>(), tagNames = new Set<string>(), pageIdSet = new Set(importedPages.map((page) => page.id));
+  const entryIds = new Map<string, string>();
+  const names = new Set<string>();
   for (const entry of knowledge.entries) {
     if (entryIds.has(entry.id)) throw new Error("备份中的词条 ID 重复"); entryIds.set(entry.id, crypto.randomUUID()); validateEditableDocument(entry.content, false);
     for (const name of [entry.title,...entry.aliases]) { const normalized=normalizeKnowledgeName(name); if (!normalized || names.has(normalized)) throw new Error("备份中词条名称或别名冲突"); names.add(normalized); }
   }
-  for (const tag of knowledge.tags) { const normalized=normalizeKnowledgeName(tag.name); if (!normalized || tagIds.has(tag.id) || tagNames.has(normalized)) throw new Error("备份标签名称或标识重复"); tagNames.add(normalized); tagIds.set(tag.id, crypto.randomUUID()); }
-  for (const item of [...knowledge.entries,...knowledge.pageTags]) if (item.tagIds.some((id) => !tagIds.has(id))) throw new Error("备份标签关联不存在");
-  for (const item of knowledge.pageTags) if (!pageIdSet.has(item.pageId)) throw new Error("备份标签页面不存在");
+
 
   if (
     manifest.data.folderCount !== importedFolders.length ||
@@ -77,6 +76,9 @@ export async function restoreUserArchive(targetUserId: string, compressed: Buffe
   const [defaultFolder] = await db.select().from(folders).where(and(eq(folders.userId, targetUserId), eq(folders.isDefault, true))).limit(1);
   if (!defaultFolder) throw new Error("目标用户缺少默认文件夹");
 
+  // Preflight returns actionable conflicts before writing files. Recheck in the transaction below.
+  planKnowledgeImport(targetUserId, knowledge.entries, policy);
+  let reusedEntries = 0, renamedEntries = 0;
   const folderIds = new Map<string, string>();
   const notebookIds = new Map<string, string>();
   const pageIds = new Map<string, string>();
@@ -124,6 +126,11 @@ export async function restoreUserArchive(targetUserId: string, compressed: Buffe
 
     const insertedAt = nowIso();
     const insertAll = sqlite.transaction(() => {
+      const plans = planKnowledgeImport(targetUserId, knowledge.entries, policy);
+      const plansById = new Map(plans.map((item) => [item.sourceId, item]));
+      for (const plan of plans) entryIds.set(plan.sourceId, plan.id);
+      reusedEntries = plans.filter((item) => item.reused).length;
+      renamedEntries = plans.filter((item) => item.renamed).length;
       const insertFolder = sqlite.prepare("INSERT INTO folders (id,user_id,name,sort_order,is_default,created_at,updated_at) VALUES (?,?,?,?,0,?,?)");
       for (const folder of importedFolders) {
         if (folder.isDefault) continue;
@@ -132,15 +139,11 @@ export async function restoreUserArchive(targetUserId: string, compressed: Buffe
       const insertAsset = sqlite.prepare("INSERT INTO assets (id,user_id,storage_path,mime_type,original_name,size,created_at) VALUES (?,?,?,?,?,?,?)");
       for (const asset of assetRows) insertAsset.run(asset.id, targetUserId, asset.storagePath, asset.mimeType, asset.originalName, asset.size, insertedAt);
       for (const entry of knowledge.entries) {
+        const plan = plansById.get(entry.id)!;
+        if (plan.reused) continue;
         const id = entryIds.get(entry.id)!;
-        sqlite.prepare("INSERT INTO knowledge_entries (id,user_id,title,content,created_at,updated_at) VALUES (?,?,?,?,?,?)").run(id, targetUserId, entry.title, rewriteAssets(JSON.stringify(entry.content), assetIds, entryIds), entry.createdAt, entry.updatedAt);
-        replaceEntryNames(targetUserId, id, entry.title, entry.aliases);
-      }
-      for (const tag of knowledge.tags) {
-        const normalized=normalizeKnowledgeName(tag.name);
-        const existing=sqlite.prepare("SELECT id FROM tags WHERE user_id=? AND normalized_name=?").get(targetUserId,normalized) as { id: string } | undefined;
-        if (existing) tagIds.set(tag.id,existing.id);
-        else sqlite.prepare("INSERT INTO tags (id,user_id,name,normalized_name,created_at,updated_at) VALUES (?,?,?,?,?,?)").run(tagIds.get(tag.id),targetUserId,tag.name,normalized,insertedAt,insertedAt);
+        sqlite.prepare("INSERT INTO knowledge_entries (id,user_id,title,content,created_at,updated_at) VALUES (?,?,?,?,?,?)").run(id, targetUserId, plan.title, rewriteAssets(JSON.stringify(entry.content), assetIds, entryIds), entry.createdAt, entry.updatedAt);
+        replaceEntryNames(targetUserId, id, plan.title, plan.aliases);
       }
       const insertNotebook = sqlite.prepare("INSERT INTO notebooks (id,user_id,folder_id,title,cover_asset_id,sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)");
       for (const notebook of importedNotebooks) {
@@ -158,12 +161,10 @@ export async function restoreUserArchive(targetUserId: string, compressed: Buffe
         if (!mappedPageId) throw new Error("备份中的历史版本页面引用无效");
         insertSnapshot.run(crypto.randomUUID(), targetUserId, mappedPageId, snapshot.title, rewriteAssets(snapshot.content, assetIds, entryIds), snapshot.createdAt);
       }
-      const assign=(kind: string,id: string,ids: string[]) => { for(const tag of new Set(ids)) sqlite.prepare("INSERT OR IGNORE INTO content_tags (tag_id,source_type,source_id) VALUES (?,?,?)").run(tagIds.get(tag),kind,id); };
-      for (const entry of knowledge.entries) assign("entry",entryIds.get(entry.id)!,entry.tagIds);
-      for (const item of knowledge.pageTags) assign("page",pageIds.get(item.pageId)!,item.tagIds);
+
     });
     insertAll();
-    return { entries: knowledge.entries.length, tags: knowledge.tags.length, folders: importedFolders.filter((folder) => !folder.isDefault).length, notebooks: importedNotebooks.length, pages: importedPages.length, snapshots: importedSnapshots.length, assets: assetRows.length };
+    return { entries: knowledge.entries.length - reusedEntries, reusedEntries, renamedEntries, folders: importedFolders.filter((folder) => !folder.isDefault).length, notebooks: importedNotebooks.length, pages: importedPages.length, snapshots: importedSnapshots.length, assets: assetRows.length };
   } catch (error) {
     await Promise.all(createdFiles.map((file) => fs.rm(file, { force: true })));
     throw error;

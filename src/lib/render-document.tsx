@@ -31,7 +31,7 @@ function renderNode(node: DocNode, key: React.Key): React.ReactNode {
       else if (mark.type === "code") output = <code key={`${String(key)}-c`}>{output}</code>;
       else if (mark.type === "link") {
         const href = safeHref(mark.attrs?.href);
-        if (href) output = <a key={`${String(key)}-a`} href={href}>{output}</a>;
+        if (href) output = <a key={`${String(key)}-a`} href={href} target="_blank" rel="noopener noreferrer">{output}</a>;
       } else if (mark.type === "highlight") output = <mark key={`${String(key)}-h`} style={{ backgroundColor: safeStyleColor(mark.attrs?.color) }}>{output}</mark>;
       else if (mark.type === "textStyle") {
         const color = safeStyleColor(mark.attrs?.color);
