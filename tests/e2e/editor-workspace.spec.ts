@@ -157,7 +157,8 @@ test("Editor workspace, real fonts, search, print, trash and responsive layout",
   for (const width of [1920, 1440, 768, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    for (const label of ["搜索当前页面", "标题样式", "字体", "代码块"]) {
+    if (width <= 600) await expect(page.locator(".toolbar-formatting")).not.toBeVisible();
+    for (const label of (width > 600 ? ["搜索当前页面", "标题样式", "字体", "代码块"] : [])) {
       const box = await page.getByLabel(label, { exact: true }).boundingBox();
       expect(box!.x).toBeGreaterThanOrEqual(0);
       expect(box!.x + box!.width).toBeLessThanOrEqual(width);

@@ -261,7 +261,7 @@ a {
 .workspace {
   height: 100dvh;
   display: grid;
-  grid-template-columns: 255px var(--pages-panel-width, 300px) minmax(0, 1fr);
+  grid-template-columns: 260px var(--pages-panel-width, 300px) minmax(0, 1fr);
   overflow: hidden;
   transition: grid-template-columns .18s ease;
 }
@@ -1101,9 +1101,9 @@ a {
 
 .editor-content-wrap {
   width: min(calc(100% - 40px), 1050px);
-  min-height: calc(100% - 48px);
-  padding: 48px 52px 88px;
-  margin: 24px auto;
+  min-height: calc(100% - 32px);
+  padding: 48px 52px 40px;
+  margin: 24px auto 8px;
   border: 1px solid hsl(var(--border));
   border-radius: 11px;
   background: var(--paper-surface);
@@ -3310,6 +3310,7 @@ a {
 }
 
 .workspace>.editor-panel {
+  background: hsl(var(--background));
   position: relative;
 }
 
@@ -3580,7 +3581,7 @@ small:not(:where(.notebook-editor *, .prose-print *)), .form-dialog-field small 
 }
 
 /* Notebook landing page shares the existing cover ratio and typography tokens. */
-.workspace.notebook-home-layout { grid-template-columns: 255px minmax(0, 1fr); }
+.workspace.notebook-home-layout { grid-template-columns: 260px minmax(0, 1fr); }
 .workspace.notebook-home-layout.sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
 .brand-home-link { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; color: inherit; text-decoration: none; border-radius: 6px; }
 .brand-home-link:focus-visible, .notebook-home-card:focus-visible, .cover-crop-viewport:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
@@ -3704,7 +3705,7 @@ small:not(:where(.notebook-editor *, .prose-print *)), .form-dialog-field small 
 .knowledge-reader-scroll { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 0 24px 24px; }
 .knowledge-reader-scroll .knowledge-aliases { padding: 14px 0; border: 0; color: var(--ui-text-muted); overflow-wrap: anywhere; }
 .knowledge-reader-scroll .knowledge-aliases p { margin: 0; }
-.knowledge-reader-scroll .notebook-editor { padding-block: 10px; min-height: 100px; }
+.knowledge-reader-scroll .notebook-editor { width: 100%; max-width: none; margin-inline: 0; padding-inline: 0; padding-block: 10px; min-height: 100px; }
 .knowledge-backlinks { margin-top: 24px; padding-top: 20px; border-top: 1px solid hsl(var(--border)); }
 .knowledge-backlinks h2 { font-size: var(--ui-body); font-weight: 600; }
 .knowledge-backlink { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 12px 8px; background: transparent; border: 0; text-align: left; color: inherit; cursor: pointer; font-size: var(--ui-secondary); overflow-wrap: anywhere; }
@@ -3801,7 +3802,7 @@ small:not(:where(.notebook-editor *, .prose-print *)), .form-dialog-field small 
 .knowledge-check-footer { justify-content: space-between; }
 .knowledge-check-footer > span { display: inline-flex; align-items: center; gap: 8px; }
 .knowledge-check-footer.is-repairing { justify-content: flex-end; }
-.knowledge-check-scroll > .knowledge-repair { width: min(100%, 640px); margin-inline: auto; border: 0; padding: 0 0 12px; background: transparent; }
+.knowledge-check-scroll > .knowledge-repair { width: 100%; margin-inline: 0; border: 0; padding: 0 0 12px; background: transparent; }
 .knowledge-repair-back { align-self: flex-start; }
 .knowledge-repair-context > span { display: block; margin-bottom: 8px; color: var(--ui-text-muted); overflow-wrap: anywhere; }
 .knowledge-repair form { display: grid; gap: 20px; }
@@ -3854,3 +3855,21 @@ small:not(:where(.notebook-editor *, .prose-print *)), .form-dialog-field small 
   .admin-knowledge-row { grid-template-columns: auto minmax(0, 1fr); }
   .admin-knowledge-row > div:last-child { grid-column: 2; display: flex; text-align: left; gap: 12px; }
 }
+
+/* Workspace and management refinements share the existing semantic palette. */
+.sidebar-knowledge-button { border-bottom: 1px solid hsl(var(--border)); border-radius: 0; padding-bottom: 12px; }
+.sidebar .folder-row:hover, .sidebar .notebook-row:hover, .sidebar .pinned-item:hover, .sidebar-trash-button:hover, .sidebar-knowledge-button:hover, .pages-panel .page-row:hover { background: hsl(var(--accent)); }
+.user-avatar { border-radius: 50%; background: var(--nav-selected); color: var(--nav-selected-text); }
+.editor-empty-topbar { border-bottom: 0; position: relative; }
+.editor-empty-topbar::after { content: ""; position: absolute; left: 16px; right: 16px; bottom: 0; border-bottom: 1px solid hsl(var(--border)); }
+.export-format-actions { flex-direction: column; align-items: stretch; }
+.knowledge-check-icon { color: var(--ui-text-secondary); }
+.knowledge-repair { padding: 0; border: 0; background: transparent; }
+.admin-nav { display: flex; flex-direction: column; }
+.admin-sidebar-brand { display: grid; gap: 4px; }
+.admin-sidebar-brand strong { font-size: var(--ui-body); }
+.admin-sidebar-brand > span { font-size: var(--ui-secondary); color: var(--ui-text-muted); }
+.admin-nav .admin-topbar { margin-top: auto; padding: 16px 0 0; border: 0; }
+@media (max-width: 950px) { .admin-nav { flex-direction: row; } .admin-nav .admin-topbar { margin-top: 0; padding: 0; flex-shrink: 0; } }
+
+@media (max-width: 600px) { .toolbar-formatting { display: none; } }

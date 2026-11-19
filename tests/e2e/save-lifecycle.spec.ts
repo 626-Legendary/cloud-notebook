@@ -28,7 +28,7 @@ test("loading, version, compact labels, unpin and nine new real fonts", async ({
   release();
   await expect(page.locator(".notebook-editor")).toBeVisible();
   await expect(page.locator(".workspace .environment-badge")).toHaveCount(0);
-  await expect(page.getByLabel("应用版本")).toHaveText("v 1.1.1118");
+  await expect(page.getByLabel("应用版本")).toHaveText("v 1.1.1119");
   await page.screenshot({ path: testInfo.outputPath("workspace-version.png") });
   await expect(page.locator('.breadcrumbs [aria-current="page"]')).toHaveText("A".repeat(60) + "...");
   await expect(page.locator('.breadcrumbs [aria-current="page"]')).toHaveAttribute("title", "A".repeat(70));
@@ -62,7 +62,7 @@ test("loading, version, compact labels, unpin and nine new real fonts", async ({
   await testInfo.attach("new-fonts", { body: JSON.stringify(report, null, 2), contentType: "application/json" });
   await page.getByTitle("导出 / 打印", { exact: true }).click();
   await expect(page.getByRole("dialog", { name: "选择导出范围" }).locator("button svg")).toHaveCount(1); // close icon only
-  await expect(page.getByRole("button", { name: "继续", exact: true }).locator("svg")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "打印 / 保存为 PDF", exact: true }).locator("svg")).toHaveCount(0);
   await page.getByRole("button", { name: "取消", exact: true }).click();
   await page.keyboard.press("Control+s");
   await expect.poll(async () => (await (await page.request.get(`/api/pages/${note.id}`)).json()).page.content).toContain("--font-caveat");

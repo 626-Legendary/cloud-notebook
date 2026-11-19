@@ -53,7 +53,7 @@ test("all UI presets persist and scale portals, controls and navigation without 
     await expect(page.locator(".page-row-time")).toHaveCSS("font-size", `${caption}px`);
     await expect(page.locator(".notebook-name")).toHaveCSS("font-size", `${secondary}px`);
     await expect(page.locator(".page-row-title")).toHaveCSS("font-size", `${body}px`);
-    await expect(page.locator(".pages-panel-heading > span")).toHaveCSS("font-size", `${body}px`);
+    await expect(page.locator(".pages-panel-heading > span")).toHaveCount(0);
     await expect(page.locator(".toolbar-row select").first()).toHaveCSS("font-size", `${secondary}px`);
     await expect(page.locator(".notebook-editor")).toHaveCSS("font-size", "16px");
     await expect(page.locator('.notebook-editor span[style*="8px"]')).toHaveCSS("font-size", "8px");
@@ -120,6 +120,8 @@ test("all presets remain usable on desktop, tablet and mobile with transient UI"
       for (const selector of [".editor-topbar-navigation-row", ".toolbar-wrapper"]) {
         expect(await page.locator(selector).evaluate((element) => element.scrollWidth <= element.clientWidth), selector).toBe(true);
       }
+      if (width > 600) {
+      await expect(page.locator(".toolbar-formatting")).toBeVisible();
       await page.getByRole("button", { name: "搜索当前页面", exact: true }).click();
       const search = page.getByLabel("搜索当前页面正文", { exact: true });
       await search.fill("Default");
@@ -127,6 +129,7 @@ test("all presets remain usable on desktop, tablet and mobile with transient UI"
       const popover = (await page.locator(".page-find-bar").boundingBox())!;
       expect(popover.x).toBeGreaterThanOrEqual(0); expect(popover.x + popover.width).toBeLessThanOrEqual(width + 1);
       await page.getByLabel("关闭搜索", { exact: true }).click();
+      } else { await expect(page.locator(".toolbar-formatting")).not.toBeVisible(); }
       await page.evaluate(() => window.dispatchEvent(new CustomEvent("cloud-notebook:notification", { detail: { type: "info", message: "界面字号提示", id: "typography", duration: 60000 } })));
       await expect(page.locator(".app-toast > span")).toHaveCSS("font-size", `${presets[preset][1]}px`);
       await page.screenshot({ path: testInfo.outputPath(`${preset}-${width}.png`) });

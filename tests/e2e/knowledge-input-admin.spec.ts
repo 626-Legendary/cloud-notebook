@@ -33,7 +33,7 @@ test("Chromium IME commits recover @Chinese, replacements and CJK boundaries wit
   } finally { await cdp.detach(); }
 });
 
-test("administrator overview, user metrics and paged knowledge list include entries with role checks", async ({ page, baseURL }, testInfo) => {
+test("administrator overview, user metrics and paged knowledge list include entries with role checks", async ({ page, baseURL }) => {
   const { headers,user }=await register(page,baseURL!);
   expect((await page.request.get("/api/admin/knowledge")).status()).toBe(403);
   const ids:string[]=[];
@@ -44,11 +44,7 @@ test("administrator overview, user metrics and paged knowledge list include entr
   if((await login.json()).user.mustChangePassword){expect((await page.request.post("/api/auth/change-password",{headers,data:{password:pwd,confirmPassword:pwd}})).ok()).toBe(true);login=await page.request.post("/api/auth/login",{headers,data:{username:"admin",password:pwd}});expect(login.ok()).toBe(true);}
   const overview=await (await page.request.get("/api/admin/overview")).json();expect(overview.entries).toBeGreaterThanOrEqual(21);expect(typeof overview.images).toBe("number");
   const users=(await (await page.request.get("/api/admin/users")).json()).users;expect(users.find((item:{id:string})=>item.id===user.id).entryCount).toBe(21);
-  const result=await (await page.request.get(`/api/admin/knowledge?q=${encodeURIComponent(user.username)}`)).json();expect(result.total).toBe(21);expect(result.entries).toHaveLength(20);expect(result.entries.every((entry:Record<string,unknown>)=>!("content"in entry))).toBe(true);
-  expect((await page.request.get("/api/admin/knowledge?page=0")).status()).toBe(400);
-  await page.goto("/admin");await expect(page.locator(".metric-card").filter({hasText:"知识库词条"})).toBeVisible();
-  await page.getByRole("link",{name:"知识库",exact:true}).click();await expect(page.getByRole("link",{name:"知识库",exact:true})).toHaveAttribute("aria-current","page");
-  await page.getByLabel("搜索管理词条").fill(user.username);await expect(page.locator(".admin-knowledge-row")).toHaveCount(20);await page.getByLabel("下一页词条").click();await expect(page.locator(".admin-knowledge-row")).toHaveCount(1);
-  await page.getByLabel("词条状态").selectOption("trash");await expect(page.locator(".admin-knowledge-row")).toHaveCount(2);await expect(page.locator(".admin-entry-status").first()).toHaveText("已删除");
-  await page.setViewportSize({width:390,height:844});expect(await page.locator(".admin-main").evaluate((element)=>element.scrollWidth<=element.clientWidth)).toBe(true);await page.screenshot({path:testInfo.outputPath("admin-knowledge-mobile.png")});
+  expect((await page.request.get("/api/admin/knowledge")).status()).toBe(404);
+  await page.goto("/admin"); await expect(page.getByRole("link",{name:"知识库",exact:true})).toHaveCount(0);
+  await page.goto("/admin/knowledge"); await expect(page).toHaveURL(/\/admin$/);
 });

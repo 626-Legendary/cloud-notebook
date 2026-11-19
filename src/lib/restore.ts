@@ -16,11 +16,12 @@ const uuid = z.string().uuid();
 const folderSchema = z.array(z.object({
   id: uuid, name: z.string().min(1).max(80), isDefault: z.boolean(), sortOrder: z.number().int()
 })).max(500);
+const lifecycle = { deletedAt: z.string().datetime().nullable().optional(), pinnedAt: z.string().datetime().nullable().optional(), pinSortOrder: z.number().int().optional() };
 const notebookSchema = z.array(z.object({
-  id: uuid, folderId: uuid, title: z.string().min(1).max(120), coverAssetId: uuid.nullable().optional(), sortOrder: z.number().int()
+  ...lifecycle, id: uuid, createdAt: z.string().optional(), updatedAt: z.string().optional(), folderId: uuid, title: z.string().min(1).max(120), coverAssetId: uuid.nullable().optional(), sortOrder: z.number().int()
 })).max(2_000);
 const pageSchema = z.array(z.object({
-  id: uuid, notebookId: uuid, title: z.string().min(1).max(200), content: z.string().max(2_000_000),
+  ...lifecycle, id: uuid, notebookId: uuid, title: z.string().min(1).max(200), content: z.string().max(2_000_000),
   sortOrder: z.number().int(), createdAt: z.string(), updatedAt: z.string()
 })).max(10_000);
 const snapshotSchema = z.array(z.object({
@@ -56,7 +57,10 @@ export async function restoreUserArchive(targetUserId: string, compressed: Buffe
   const importedAssets = assetSchema.parse(json("assets.json"));
   const knowledge = manifest.data.formatVersion === 2 ? cnfKnowledgeSchema.parse(json("knowledge.json")) : { entries: [], tags: [], pageTags: [] };
   if (manifest.data.formatVersion === 2 && (manifest.data.knowledgeCount !== knowledge.entries.length || manifest.data.tagCount !== knowledge.tags.length)) throw new Error("知识库备份清单与数据不一致");
+  const deletedKnowledge = z.array(z.object({ id: uuid,title:z.string().min(1).max(120),content:z.string().max(2_000_000),createdAt:z.string(),updatedAt:z.string(),deletedAt:z.string().datetime() })).max(10000).parse(entries.has("deleted-knowledge.json") ? json("deleted-knowledge.json") : []);
+  for (const entry of deletedKnowledge) validateEditableDocument(JSON.parse(entry.content),false);
   const entryIds = new Map<string, string>();
+  for (const entry of deletedKnowledge) { if(entryIds.has(entry.id)) throw new Error("已删除词条 ID 重复"); entryIds.set(entry.id,crypto.randomUUID()); }
   const names = new Set<string>();
   for (const entry of knowledge.entries) {
     if (entryIds.has(entry.id)) throw new Error("备份中的词条 ID 重复"); entryIds.set(entry.id, crypto.randomUUID()); validateEditableDocument(entry.content, false);
@@ -145,15 +149,18 @@ export async function restoreUserArchive(targetUserId: string, compressed: Buffe
         sqlite.prepare("INSERT INTO knowledge_entries (id,user_id,title,content,created_at,updated_at) VALUES (?,?,?,?,?,?)").run(id, targetUserId, plan.title, rewriteAssets(JSON.stringify(entry.content), assetIds, entryIds), entry.createdAt, entry.updatedAt);
         replaceEntryNames(targetUserId, id, plan.title, plan.aliases);
       }
+      for (const entry of deletedKnowledge) sqlite.prepare("INSERT INTO knowledge_entries (id,user_id,title,content,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?)").run(entryIds.get(entry.id),targetUserId,entry.title,rewriteAssets(entry.content,assetIds,entryIds),entry.createdAt,entry.updatedAt,entry.deletedAt);
       const insertNotebook = sqlite.prepare("INSERT INTO notebooks (id,user_id,folder_id,title,cover_asset_id,sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)");
       for (const notebook of importedNotebooks) {
         const coverId = notebook.coverAssetId ? assetIds.get(notebook.coverAssetId) ?? null : null;
-        insertNotebook.run(notebookIds.get(notebook.id), targetUserId, folderIds.get(notebook.folderId), notebook.title, coverId, notebook.sortOrder, insertedAt, insertedAt);
+        insertNotebook.run(notebookIds.get(notebook.id), targetUserId, folderIds.get(notebook.folderId), notebook.title, coverId, notebook.sortOrder, notebook.createdAt ?? insertedAt, notebook.updatedAt ?? insertedAt);
+        sqlite.prepare("UPDATE notebooks SET deleted_at=?,pinned_at=?,pin_sort_order=? WHERE id=? AND user_id=?").run(notebook.deletedAt ?? null,notebook.pinnedAt ?? null,notebook.pinSortOrder ?? 0,notebookIds.get(notebook.id),targetUserId);
       }
       const insertPage = sqlite.prepare("INSERT INTO pages (id,user_id,notebook_id,title,content,sort_order,version,created_at,updated_at) VALUES (?,?,?,?,?,?,1,?,?)");
       for (const page of importedPages) {
         const content = rewriteAssets(page.content, assetIds, entryIds);
         insertPage.run(pageIds.get(page.id), targetUserId, notebookIds.get(page.notebookId), page.title, content, page.sortOrder, page.createdAt, page.updatedAt);
+        sqlite.prepare("UPDATE pages SET deleted_at=?,pinned_at=?,pin_sort_order=? WHERE id=? AND user_id=?").run(page.deletedAt ?? null,page.pinnedAt ?? null,page.pinSortOrder ?? 0,pageIds.get(page.id),targetUserId);
       }
       const insertSnapshot = sqlite.prepare("INSERT INTO note_snapshots (id,user_id,page_id,title,content,created_at) VALUES (?,?,?,?,?,?)");
       for (const snapshot of importedSnapshots) {

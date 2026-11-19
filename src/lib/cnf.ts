@@ -99,7 +99,7 @@ async function exportCnf(userId: string, notebookId: string, scope: CnfManifest[
     entries.set(entryPath, bytes);
     assetManifest.push({ id: asset.id, path: entryPath, mimeType: asset.mimeType as CnfManifest["assets"][number]["mimeType"], originalName: asset.originalName, size: bytes.length, createdAt: asset.createdAt, sha256: sha256(bytes) });
   }
-  const manifest: CnfManifest = { format: "cloud-notebook-file", formatVersion: 2, scope, applicationVersion: process.env.APP_VERSION?.trim() || "1.1.1118", exportedAt: new Date().toISOString(), notebookId: notebook.id, compatibility: { editor: "tiptap-json", schemaVersion: 2, assets: "relative-v1" }, notebookSha256: sha256(data), knowledgeSha256: sha256(knowledgeData), pageCount: notebook.pages.length, snapshotCount: notebook.snapshots.length, assets: assetManifest };
+  const manifest: CnfManifest = { format: "cloud-notebook-file", formatVersion: 2, scope, applicationVersion: process.env.APP_VERSION?.trim() || "1.1.1119", exportedAt: new Date().toISOString(), notebookId: notebook.id, compatibility: { editor: "tiptap-json", schemaVersion: 2, assets: "relative-v1" }, notebookSha256: sha256(data), knowledgeSha256: sha256(knowledgeData), pageCount: notebook.pages.length, snapshotCount: notebook.snapshots.length, assets: assetManifest };
   entries.set("notebook.json", data);
   entries.set("knowledge.json", knowledgeData);
   entries.set("manifest.json", Buffer.from(JSON.stringify(manifest)));

@@ -111,7 +111,7 @@ docker compose -f docker-compose.e2e.yml down
 | CNF／名称冲突 | `integration/cnf-round-trip.test.ts`、`e2e/native-notebook-transfer.spec.ts`、`e2e/knowledge-workspace.spec.ts` |
 | 管理员用户 ZIP 恢复 | `integration/user-knowledge-backup.test.ts`、`e2e/knowledge-workspace.spec.ts` |
 | 图片、永久删除、存储清理 | `integration/admin-user-deletion.test.ts`、`integration/missing-asset-cleanup.test.ts`、`unit/asset-references.test.ts`、`e2e/admin-users-storage.spec.ts` |
-| 管理员只读知识库 | `integration/admin-knowledge.test.ts`、`e2e/knowledge-input-admin.spec.ts` |
+| 管理员知识库访问限制 | `e2e/knowledge-input-admin.spec.ts`（入口移除、旧页面跳转及接口拒绝） |
 | 封面、面板、滚动 | `e2e/notebook-home-crop.spec.ts`、`e2e/workspace-panels.spec.ts`、`e2e/sidebar-scrolling.spec.ts` |
 | 表格逻辑列上限 | `unit/table-limit.test.ts`、`e2e/table-columns.spec.ts` |
 

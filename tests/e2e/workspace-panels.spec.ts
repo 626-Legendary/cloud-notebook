@@ -53,8 +53,32 @@ test("page panel resizing preserves editing, persists width and shares edge scro
   await search.click(); await expect(page.getByRole("searchbox", { name: "搜索当前页面正文" })).toBeFocused();
   await page.keyboard.press("Escape");
   await page.screenshot({ path: testInfo.outputPath("workspace-wide-panel.png"), fullPage: true });
+  await editor.evaluate((element) => { element.dataset.viewportProbe="kept"; });
+  for (const width of [390,600,601,768]) {
+    await page.setViewportSize({width,height:844});
+    if(width<=600) await expect(page.locator(".toolbar-formatting")).not.toBeVisible();
+    else await expect(page.locator(".toolbar-formatting")).toBeVisible();
+    await expect(editor).toHaveAttribute("data-viewport-probe","kept");
+  }
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(handle).not.toBeVisible();
   await page.getByLabel("显示页面列表", { exact: true }).click();
   await expect.poll(async () => (await panel.boundingBox())!.width).toBe(290);
+});
+
+test("workspace navigation, export choices and trash route share the refined layout",async({page,baseURL},testInfo)=>{
+ if(process.env.E2E_ALLOW_MUTATIONS!=="1" || baseURL!=="http://127.0.0.1:3002")throw new Error("Disposable server required");
+ await page.goto("/login");await expect(page.locator(".brand-mark img")).toHaveAttribute("src","/icon.png");
+ const headers={Origin:baseURL!},password="BrowserTest12345";
+ expect((await page.request.post("/api/auth/register",{headers,data:{username:`layout_${Date.now()}`,password,confirmPassword:password}})).status()).toBe(201);
+ const {notebook}=await(await page.request.post("/api/notebooks",{headers,data:{title:"布局笔记本"}})).json();
+ const {page:note}=await(await page.request.post(`/api/notebooks/${notebook.id}/pages`,{headers,data:{title:"布局页面"}})).json();
+ await page.setViewportSize({width:1440,height:900});await page.goto(`/app?page=${note.id}`);await expect(page.locator(".notebook-editor")).toBeVisible();
+ expect((await page.locator(".sidebar").boundingBox())!.width).toBe(260);await expect(page.locator(".pages-panel-title")).toHaveCount(0);
+ await page.getByRole("button",{name:"导出",exact:true}).click();
+ await expect(page.locator(".export-format-actions button")).toHaveText(["打印 / 保存为 PDF","导出原生文件 (.cnf)","取消"]);
+ await page.getByRole("button",{name:"取消",exact:true}).click();
+ await page.getByRole("button",{name:"账号与设置",exact:true}).click();await page.getByRole("menuitem",{name:"数据管理",exact:true}).hover();await page.getByRole("menuitem",{name:"引用管理",exact:true}).click();await expect(page.getByRole("heading",{name:"引用管理",exact:true})).toBeVisible();await page.getByLabel("关闭引用检查",{exact:true}).click();
+ await page.getByRole("button",{name:"垃圾箱",exact:true}).click();await expect(page).toHaveURL(/\/app\/trash/);await expect(page.locator(".pages-panel")).toHaveCount(0);await page.reload();await expect(page.locator(".trash-page")).toBeVisible();
+ await page.screenshot({path:testInfo.outputPath("trash-route.png")});
 });

@@ -40,6 +40,8 @@ export async function createUserExport(userId: string) {
   archive.pipe(stream);
   const exportAssets = userAssets.map(({ id, mimeType, originalName, size, createdAt }) => ({ id, mimeType, originalName, size, createdAt }));
   const manifest = { formatVersion: 2, knowledgeCount: knowledge.entries.length, tagCount: knowledge.tags.length, username: user.username, exportedAt: new Date().toISOString(), folderCount: userFolders.length, notebookCount: userNotebooks.length, pageCount: pageCount.value, snapshotCount: snapshotCount.value, assetCount: userAssets.length };
+  const deletedKnowledge = sqlite.prepare("SELECT id,title,content,created_at AS createdAt,updated_at AS updatedAt,deleted_at AS deletedAt FROM knowledge_entries WHERE user_id=? AND deleted_at IS NOT NULL").all(userId);
+  archive.append(JSON.stringify(deletedKnowledge), { name: "deleted-knowledge.json" });
   archive.append(JSON.stringify(knowledge), { name: "knowledge.json" });
   archive.append(JSON.stringify(manifest, null, 2), { name: "manifest.json" });
   archive.append(JSON.stringify(userFolders, null, 2), { name: "folders.json" });
@@ -71,7 +73,7 @@ export async function createUserExport(userId: string) {
     snapshotExportDb = new Database(databaseFile, { readonly: true, fileMustExist: true });
     const pageRows = pageExportDb.prepare(`
       SELECT id, user_id AS userId, notebook_id AS notebookId, title, content,
-             sort_order AS sortOrder, version, created_at AS createdAt, updated_at AS updatedAt
+             deleted_at AS deletedAt, pinned_at AS pinnedAt, pin_sort_order AS pinSortOrder, sort_order AS sortOrder, version, created_at AS createdAt, updated_at AS updatedAt
       FROM pages WHERE user_id = ? ORDER BY notebook_id, sort_order
     `).iterate(userId) as Iterable<Record<string, unknown>>;
     const snapshotRows = snapshotExportDb.prepare(`

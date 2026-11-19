@@ -72,14 +72,14 @@ test("home cards, cover crop/zoom/cancel, brand navigation, sidebar hierarchy an
   await page.getByRole("menuitem", { name: "重命名", exact: true }).click();
   await page.getByRole("dialog", { name: "重命名笔记本", exact: true }).getByRole("textbox").fill("更新后的笔记本");
   await page.getByRole("dialog", { name: "重命名笔记本", exact: true }).getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.locator(".pages-panel-title")).toHaveText("更新后的笔记本");
+  await expect(page.locator(".notebook-row.selected .notebook-name")).toHaveText("更新后的笔记本");
   await page.locator(".brand-home-link").click();
   await expect(page.getByRole("button", { name: "打开笔记本：更新后的笔记本", exact: true })).toBeVisible();
-  await page.goBack(); await expect(page.locator(".pages-panel-title")).toHaveText("更新后的笔记本");
+  await page.goBack(); await expect(page.locator(".notebook-row.selected .notebook-name")).toHaveText("更新后的笔记本");
   await page.locator(".brand-home-link").click();
   await page.getByRole("button", { name: "打开笔记本：默认位置", exact: true }).click();
-  await expect(page.locator(".pages-panel-title")).toHaveText(root.title);
-  await page.reload(); await expect(page.locator(".pages-panel-title")).toHaveText(root.title);
+  await expect(page.locator(".notebook-row.selected .notebook-name")).toHaveText(root.title);
+  await page.reload(); await expect(page.locator(".notebook-row.selected .notebook-name")).toHaveText(root.title);
   await page.locator(".brand-home-link").click();
   await page.getByRole("button", { name: "账号与设置", exact: true }).click();
   await page.getByRole("menuitem", { name: "外观", exact: true }).hover();
@@ -101,7 +101,7 @@ test("home cards, cover crop/zoom/cancel, brand navigation, sidebar hierarchy an
   await create.getByLabel("封面图片").setInputFiles("tests/fixtures/cover.png");
   await crop.getByRole("button", { name: "确认裁剪", exact: true }).click();
   await create.getByRole("button", { name: "创建笔记本", exact: true }).click();
-  await expect(page.locator(".pages-panel-title")).toHaveText("创建时裁剪封面");
+  await expect(page.locator(".notebook-row.selected .notebook-name")).toHaveText("创建时裁剪封面");
   await expect.poll(() => page.locator(".notebook-cover-card img").evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBe(1600);
 
 });

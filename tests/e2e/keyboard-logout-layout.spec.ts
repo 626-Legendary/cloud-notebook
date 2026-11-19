@@ -63,7 +63,7 @@ test("exact keyboard shortcuts, readable dark UI, toolbar grouping and mobile na
   expect(await page.locator(".font-size-controls").evaluate((element) => element.nextElementSibling?.classList.contains("toolbar-divider"))).toBe(true);
   expect(await page.getByLabel("自定义字号", { exact: true }).evaluate((element) => element.nextElementSibling?.classList.contains("toolbar-divider"))).toBe(true);
   await expect(page.locator(".font-size-step-button").first()).toHaveCSS("border-top-width", "0px");
-  await expect(page.locator(".pages-panel-heading > span")).toHaveCSS("font-size", "16px");
+  await expect(page.locator(".pages-panel-heading > span")).toHaveCount(0);
   await expect(page.locator(".pages-panel-heading")).toHaveCSS("border-bottom-width", "0px");
   await expect(page.locator(".pages-panel-divider")).toHaveCSS("height", "1px");
   await appearance(page, "深色");

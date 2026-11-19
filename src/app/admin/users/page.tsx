@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, FileUp, KeyRound, Pencil, Users, Trash2 } from "lucide-react";
+import { Download, Upload, KeyRound, Pencil, Users, Trash2 } from "lucide-react";
 import { useKnowledgeImportConflicts } from "@/components/knowledge-import-conflicts";
 import { useConfirm } from "@/components/ui/alert-dialog";
 
@@ -137,7 +137,7 @@ export default function AdminUsersPage() {
         <button className="button-outline" disabled={pending !== null} onClick={() => void updateUsername(user)}><Pencil size={14} />修改用户名</button>
         <button className="button-outline" disabled={pending !== null} onClick={() => void resetPassword(user)}><KeyRound size={14} />重置密码</button>
         <button className="button-outline" disabled={pending !== null} onClick={() => void exportData(user)}><Download size={14} />导出全部</button>
-        <label className="button-outline" aria-disabled={pending !== null}><FileUp size={14} />恢复备份<input type="file" accept=".zip,application/zip" hidden disabled={pending !== null} onChange={(event) => {
+        <label className="button-outline" aria-disabled={pending !== null}><Upload size={14} />恢复备份<input type="file" accept=".zip,application/zip" hidden disabled={pending !== null} onChange={(event) => {
           const file = event.target.files?.[0];
           if (file) void restoreData(user, file);
           event.target.value = "";

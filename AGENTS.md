@@ -120,7 +120,7 @@ Cloud Notebook 是基于 Next.js App Router 的自托管云笔记应用，正文
 | [README.md](README.md) | 项目介绍、安装、运行、环境变量、部署、备份与恢复 |
 | [UI_DESIGN_SYSTEM.md](docs/UI_DESIGN_SYSTEM.md) | 所有 UI 任务：颜色、品牌、组件、布局与交互主规范 |
 | [UI_TYPOGRAPHY.md](docs/UI_TYPOGRAPHY.md) | 字号角色、偏好持久化、字体实现及正文／打印边界 |
-| [KNOWLEDGE_BASE.md](docs/KNOWLEDGE_BASE.md) | 词条、命名空间、引用、反向来源、精确修复及管理员查询 |
+| [KNOWLEDGE_BASE.md](docs/KNOWLEDGE_BASE.md) | 词条、命名空间、引用、反向来源、精确修复及管理员权限边界 |
 | [CNF_FORMAT.md](docs/CNF_FORMAT.md) | `.cnf` 文件契约、校验、导入导出范围和冲突处理 |
 | [KEYBOARD_SHORTCUTS.md](docs/KEYBOARD_SHORTCUTS.md) | 修饰键、编辑器／弹窗作用域及退出会话流程 |
 | [tests/README.md](tests/README.md) | 验证指令、隔离环境、专项测试选择与执行步骤 |

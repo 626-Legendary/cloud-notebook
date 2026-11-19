@@ -1,12 +1,11 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Archive, HardDrive, LibraryBig, Settings2, Users } from "lucide-react";
+import { Activity, Archive, HardDrive, Settings2, Users } from "lucide-react";
 
 const links = [
   { href: "/admin", label: "系统概览", icon: Activity },
   { href: "/admin/users", label: "用户管理", icon: Users },
-  { href: "/admin/knowledge", label: "知识库", icon: LibraryBig },
   { href: "/admin/assets", label: "存储清理", icon: HardDrive },
   { href: "/admin/backups", label: "数据备份", icon: Archive },
   { href: "/admin/settings", label: "系统设置", icon: Settings2 }

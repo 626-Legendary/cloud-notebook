@@ -13,9 +13,10 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
   if (session.mustChangePassword) redirect("/change-password");
   return <div className="admin-shell">
     <aside className="admin-nav">
-      <div className="brand-row"><span className="brand-small"><Image src="/icon.png" alt="" width={24} height={24} unoptimized /></span>管理控制台</div>
+      <div className="brand-row"><span className="brand-small"><Image src="/icon.png" alt="" width={24} height={24} unoptimized /></span><span className="admin-sidebar-brand"><strong>Cloud Notebook</strong><span>管理控制台</span></span></div>
       <AdminNavigation />
+      <AdminHeader />
     </aside>
-    <main className="admin-main"><AdminHeader />{children}</main>
+    <main className="admin-main">{children}</main>
   </div>;
 }

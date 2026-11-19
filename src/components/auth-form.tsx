@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState, useSyncExternalStore } from "react";
-import { Cloud, LoaderCircle } from "lucide-react";
+import Image from "next/image";
+import { LoaderCircle } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,7 +51,7 @@ export function AuthForm({ mode, registrationEnabled = true, isTest = false }: {
     <main className="auth-shell">
       <div className="auth-theme"><ThemeToggle value={selectedTheme} onChange={setTheme} /></div>
       <section className="auth-card">
-        <div className="brand-mark"><Cloud size={19} strokeWidth={1.8} /></div>
+        <div className="brand-mark"><Image src="/icon.png" alt="" width={28} height={28} unoptimized /></div>
         <div className="auth-brand">Cloud Notebook{isTest && <span className="environment-badge environment-test">测试版</span>}</div>
         <p className="auth-subtitle">{register ? "开辟一个只属于你的笔记空间" : "欢迎回来，继续记录你的想法"}</p>
         <form className="auth-form" onSubmit={submit}>

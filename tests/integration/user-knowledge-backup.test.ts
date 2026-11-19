@@ -48,3 +48,22 @@ it("rename resolves ambiguous alias conflicts without changing existing entries 
  const restored=listEntries(other).find((entry)=>entry.id!==first.id&&entry.id!==second.id)!;expect(restored.title).toBe("知识备份（导入 1）");expect(restored.aliases).toEqual(["Backup（导入 1）"]);
  expect(checkReferences(other).statistics.validReferences).toBe(1);const page=state.sqlite.prepare("SELECT content FROM pages WHERE user_id=?").get(other) as {content:string};expect(page.content).toContain(restored.id);
 });
+
+it("preserves deleted and pinned page/notebook state instead of reviving trash", async()=>{
+ state.sqlite.prepare("UPDATE pages SET deleted_at=?,pinned_at=?,pin_sort_order=7 WHERE id=?").run(now,now,pageId);
+ state.sqlite.prepare("UPDATE notebooks SET deleted_at=?,pinned_at=?,pin_sort_order=4 WHERE user_id=?").run(now,now,owner);
+ await restoreUserArchive(other,await archive());
+ expect(state.sqlite.prepare("SELECT deleted_at,pinned_at,pin_sort_order FROM pages WHERE user_id=?").get(other)).toEqual({deleted_at:now,pinned_at:now,pin_sort_order:7});
+ expect(state.sqlite.prepare("SELECT deleted_at,pinned_at,pin_sort_order FROM notebooks WHERE user_id=?").get(other)).toEqual({deleted_at:now,pinned_at:now,pin_sort_order:4});
+});
+
+it("retains deleted knowledge content and images without reviving its names",async()=>{
+ state.sqlite.prepare("UPDATE knowledge_entries SET deleted_at=? WHERE id=?").run(now,entryId);
+ state.sqlite.prepare("DELETE FROM knowledge_names WHERE entry_id=?").run(entryId);
+ await restoreUserArchive(other,await archive());
+ const restored=state.sqlite.prepare("SELECT id,content,deleted_at FROM knowledge_entries WHERE user_id=?").get(other) as {id:string;content:string;deleted_at:string};
+ expect(restored.deleted_at).toBe(now);expect(listEntries(other)).toHaveLength(0);
+ expect(state.sqlite.prepare("SELECT COUNT(*) AS n FROM knowledge_names WHERE entry_id=?").get(restored.id)).toEqual({n:0});
+ const asset=JSON.parse(restored.content).content[0].attrs.assetId;
+ expect(fs.readFileSync(path.join(directory,`data/uploads/notes/${asset}.png`))).toEqual(image);
+});

@@ -1,4 +1,5 @@
 "use client";
+import { Database } from "lucide-react";
 import { useKnowledgeImportConflicts } from "@/components/knowledge-import-conflicts";
 
 import { KnowledgeDialogs } from "@/components/knowledge-dialogs";
@@ -126,7 +127,15 @@ export function Workspace({ appVersion }: { appVersion: string }) {
   const [exportScope, setExportScope] = useState<"page" | "notebook">("page");
   const [snapshots, setSnapshots] = useState<SnapshotItem[]>([]);
   const [pins, setPins] = useState<PinItem[]>([]);
-  const [trashOpen, setTrashOpen] = useState(false);
+  const trashOpen = pathname === "/app/trash";
+  useEffect(() => { if (!trashOpen) return; const controller = new AbortController(); void requestJson<{ trash: TrashItem[] }>("/api/trash").then((data) => { if (!controller.signal.aborted) setTrashItems(data.trash); }).catch((cause: unknown) => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "无法读取垃圾箱"); }); return () => controller.abort(); }, [trashOpen]);
+  function setTrashOpen(open: boolean) {
+    const url = new URL(window.location.href);
+    if (open) url.pathname = "/app/trash";
+    else if (url.pathname === "/app/trash") url.pathname = "/app";
+    else return;
+    window.history.pushState(null, "", url);
+  }
   const [trashQuery, setTrashQuery] = useState("");
   const [trashType, setTrashType] = useState("all");
   const [trashItems, setTrashItems] = useState<TrashItem[]>([]);
@@ -309,6 +318,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
       try {
         if (selectedPage) await flushPageEdits(selectedPage.id);
         const url = new URL(window.location.href);
+        if (url.pathname === "/app/trash") return;
         const pageId = url.searchParams.get("page");
         const detail = pageId ? await requestJson<{ page: Page }>(`/api/pages/${encodeURIComponent(pageId)}`) : null;
         const notebookId = detail?.page.notebookId ?? url.searchParams.get("notebook");
@@ -658,10 +668,11 @@ export function Workspace({ appVersion }: { appVersion: string }) {
   }
 
   async function openTrash() {
-    setKnowledgeOpen(false);
     try {
+      if (selectedPage) await flushPageEdits(selectedPage.id);
       const result = await requestJson<{ trash: TrashItem[] }>("/api/trash");
       setTrashItems(result.trash);
+      setKnowledgeOpen(false);
       setTrashOpen(true);
       setShowSidebar(false);
       setShowPages(false);
@@ -838,7 +849,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
     setSelectedPage((current) => current?.id === page.id ? { ...current, ...page } : current);
   }
 
-  const isHome = knowledgeOpen || (!selectedNotebook && !trashOpen);
+  const isHome = knowledgeOpen || trashOpen || !selectedNotebook;
 
   if (!workspaceReady) return <WorkspaceLoading />;
 
@@ -943,8 +954,8 @@ export function Workspace({ appVersion }: { appVersion: string }) {
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild><button className="icon-button" title="账号与设置" aria-label="账号与设置"><Settings size={17} /></button></DropdownMenu.Trigger>
             <DropdownMenu.Portal><DropdownMenu.Content className="menu-content" align="end" sideOffset={5}>
-              <DropdownMenu.Label className="settings-menu-label">偏好设置</DropdownMenu.Label>
-              <DropdownMenu.Sub><DropdownMenu.SubTrigger className="menu-item"><Settings size={16} />数据管理<MenuChevron className="menu-chevron" size={14} /></DropdownMenu.SubTrigger><DropdownMenu.Portal><DropdownMenu.SubContent className="menu-content" sideOffset={6}><DropdownMenu.Item className="menu-item" onSelect={() => window.dispatchEvent(new Event("cloud-notebook:reference-check"))}>引用检查</DropdownMenu.Item></DropdownMenu.SubContent></DropdownMenu.Portal></DropdownMenu.Sub>
+              <DropdownMenu.Label className="settings-menu-label">账号与设置</DropdownMenu.Label>
+              <DropdownMenu.Sub><DropdownMenu.SubTrigger className="menu-item"><Database size={16} />数据管理<MenuChevron className="menu-chevron" size={14} /></DropdownMenu.SubTrigger><DropdownMenu.Portal><DropdownMenu.SubContent className="menu-content" sideOffset={6}><DropdownMenu.Item className="menu-item" onSelect={() => window.dispatchEvent(new Event("cloud-notebook:reference-check"))}>引用管理</DropdownMenu.Item></DropdownMenu.SubContent></DropdownMenu.Portal></DropdownMenu.Sub>
               <DropdownMenu.Sub>
                 <DropdownMenu.SubTrigger className="menu-item"><Sun size={16} />外观<MenuChevron className="menu-chevron" size={14} /></DropdownMenu.SubTrigger>
                 <DropdownMenu.Portal><DropdownMenu.SubContent className="menu-content" sideOffset={6}>
@@ -991,7 +1002,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
           <button className="icon-button sidebar-toggle" title={settings.sidebarCollapsed ? "显示工作区侧栏" : "隐藏工作区侧栏"} aria-label={settings.sidebarCollapsed ? "显示工作区侧栏" : "隐藏工作区侧栏"} onClick={() => void saveSettings({ sidebarCollapsed: !settings.sidebarCollapsed })}>
             {settings.sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
           </button>
-          <span className="text-ui-body pages-panel-title" title={selectedNotebook?.title}>{selectedNotebook?.title || "无标题"}</span>
+
           <div className="panel-heading-actions">
             <button className="icon-button" title="新建页面" aria-label="新建页面" onClick={() => void createPage()}><FilePlus2 size={17} /></button>
             <button className="icon-button mobile-pages-close" title="关闭页面列表" aria-label="关闭页面列表" onClick={() => setShowPages(false)}><X size={16} /></button>
@@ -1077,9 +1088,9 @@ export function Workspace({ appVersion }: { appVersion: string }) {
           </div>
         </section>
       </div>) : <>
-        {knowledgeOpen && <header className="editor-topbar"><button className="icon-button" aria-label="显示文件夹" onClick={() => setShowSidebar(true)}><Folder size={16} /></button><button className="button-subtle" onClick={() => setKnowledgeOpen(false)}>返回笔记本</button></header>}
+        {knowledgeOpen && <header className="editor-topbar"><button className="icon-button mobile-nav-toggle" aria-label="显示文件夹" onClick={() => setShowSidebar(true)}><Folder size={16} /></button><button className="button-subtle" onClick={() => setKnowledgeOpen(false)}>返回笔记本</button></header>}
         {!selectedPage && !knowledgeOpen && <header className="editor-topbar editor-empty-topbar">
-          <button className="icon-button" title="显示文件夹" aria-label="显示文件夹" onClick={() => setShowSidebar(true)}><Folder size={16} /></button>
+          <button className="icon-button mobile-nav-toggle" title="显示文件夹" aria-label="显示文件夹" onClick={() => setShowSidebar(true)}><Folder size={16} /></button>
           {!isHome && <button className="icon-button mobile-nav-toggle" title="显示页面列表" aria-label="显示页面列表" onClick={() => setShowPages(true)}><NotebookPen size={16} /></button>}
           <div className="empty-editor-actions">
             <button className="button-subtle header-action" type="button" onClick={openGlobalSearch}><Search size={15} />全局搜索</button>
@@ -1180,13 +1191,13 @@ export function Workspace({ appVersion }: { appVersion: string }) {
       {modal === "export" && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setModal(null); }}>
         <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="export-title">
           <header className="modal-header"><strong id="export-title">选择导出范围</strong><button className="icon-button" type="button" aria-label="关闭" onClick={() => setModal(null)}><X size={15} /></button></header>
-          <button className="button-outline native-page-export" type="button" onClick={() => { if (selectedPage) void flushPageEdits(selectedPage.id).then(() => downloadKnowledgeFile(exportScope === "page" ? `/api/pages/${selectedPage.id}/cnf` : `/api/notebooks/${selectedNotebook?.id}/cnf`, `${exportScope === "page" ? selectedPage.title : selectedNotebook?.title}.cnf`)).then(() => setModal(null)).catch((error: unknown) => setError(error instanceof Error ? error.message : "导出失败")); }}>导出原生文件 (.cnf)</button>
           <div className="modal-body export-options">
             <label><input type="radio" name="export-scope" checked={exportScope === "page"} onChange={() => setExportScope("page")} />当前页面</label>
             <label><input type="radio" name="export-scope" checked={exportScope === "notebook"} onChange={() => setExportScope("notebook")} />当前笔记本</label>
-            <div className="form-dialog-actions">
+            <div className="form-dialog-actions export-format-actions">
+              <button className="button-primary" type="button" onClick={exportSelection}>打印 / 保存为 PDF</button>
+          <button className="button-outline" type="button" onClick={() => { if (selectedPage) void flushPageEdits(selectedPage.id).then(() => downloadKnowledgeFile(exportScope === "page" ? `/api/pages/${selectedPage.id}/cnf` : `/api/notebooks/${selectedNotebook?.id}/cnf`, `${exportScope === "page" ? selectedPage.title : selectedNotebook?.title}.cnf`)).then(() => setModal(null)).catch((error: unknown) => setError(error instanceof Error ? error.message : "导出失败")); }}>导出原生文件 (.cnf)</button>
               <button className="button-outline" type="button" onClick={() => setModal(null)}>取消</button>
-              <button className="button-primary" type="button" onClick={exportSelection}>继续</button>
             </div>
           </div>
         </section>

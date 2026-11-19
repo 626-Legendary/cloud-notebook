@@ -65,7 +65,7 @@ export function ReferenceCheck({ onClose, beforeScan, onNavigate, onRepaired }: 
   return <Dialog.Root open onOpenChange={(open) => { if (!open && !busy) onClose(); }}><Dialog.Portal>
     <Dialog.Overlay className="knowledge-dialog-overlay" />
     <Dialog.Content className="knowledge-check-dialog" onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }}>
-      <header className="knowledge-check-header"><span className="knowledge-check-icon"><ClipboardCheck size={22} /></span><div><Dialog.Title className="text-ui-heading">数据管理 · 引用检查</Dialog.Title><Dialog.Description>{issue ? "选择修复方式，仅修改这一处引用。" : "检查笔记与词条的关联，处理无法访问的目标。"}</Dialog.Description></div><button className="icon-button" aria-label="关闭引用检查" disabled={busy} onClick={onClose}><X size={18} /></button></header>
+      <header className="knowledge-check-header"><span className="knowledge-check-icon"><ClipboardCheck size={22} /></span><div><Dialog.Title className="text-ui-heading">引用管理</Dialog.Title><Dialog.Description>{issue ? "选择修复方式，仅修改这一处引用。" : "检查笔记与词条的关联，处理无法访问的目标。"}</Dialog.Description></div><button className="icon-button" aria-label="关闭引用检查" disabled={busy} onClick={onClose}><X size={18} /></button></header>
       <div className="knowledge-check-scroll" aria-busy={busy}>
         {error && <p className="knowledge-check-error" role="alert">{error}</p>}
         {issue ? <section className="knowledge-repair" aria-label="修复引用">

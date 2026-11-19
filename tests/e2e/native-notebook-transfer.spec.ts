@@ -22,7 +22,7 @@ test("native CNF UI round-trip preserves rich content, ordering, images, cover a
   await expect(page.getByRole("heading", { name: "我的笔记本" })).toBeVisible();
   await expect(page.getByRole("button", { name: `打开笔记本：${notebook.title}`, exact: true }).locator("img")).toBeVisible();
   await page.getByRole("button", { name: `打开笔记本：${notebook.title}`, exact: true }).click();
-  await expect(page.locator(".pages-panel-title")).toHaveText(notebook.title);
+  await expect(page.locator(".notebook-row.selected .notebook-name")).toHaveText(notebook.title);
   await expect(page.locator(".page-list .page-row-title")).toHaveText(["另一页面", "完整格式"]);
   await page.getByLabel("原生备份 Rich Notebook 操作", { exact: true }).click();
   const downloadPromise = page.waitForEvent("download");
@@ -31,7 +31,7 @@ test("native CNF UI round-trip preserves rich content, ordering, images, cover a
   expect(download.suggestedFilename()).toBe("原生备份 Rich Notebook.cnf");
   const bytes = await fs.readFile((await download.path())!);
   const archive = await parseCnf(bytes);
-  expect(archive.manifest.applicationVersion).toBe("1.1.1118");
+  expect(archive.manifest.applicationVersion).toBe("1.1.1119");
   expect(archive.manifest.assets).toHaveLength(1);
   expect(archive.notebook.pages.map((item) => item.title)).toEqual(["另一页面", "完整格式"]);
   await page.locator(".brand-home-link").click();

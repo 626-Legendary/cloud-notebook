@@ -102,7 +102,7 @@ test("mention menu, truncated preview and reference repair remain readable witho
   expect(await preview.locator(".knowledge-preview-summary").evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
   await expect(preview.locator(".knowledge-preview-actions")).toHaveCSS("border-top-width", "1px");
   await page.screenshot({ path: testInfo.outputPath("entry-preview.png") }); await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "账号与设置", exact: true }).click(); await page.getByRole("menuitem", { name: "数据管理", exact: true }).hover(); await page.getByRole("menuitem", { name: "引用检查", exact: true }).click();
+  await page.getByRole("button", { name: "账号与设置", exact: true }).click(); await page.getByRole("menuitem", { name: "数据管理", exact: true }).hover(); await page.getByRole("menuitem", { name: "引用管理", exact: true }).click();
   const check = page.locator(".knowledge-check-dialog"); await expect(check).toBeVisible(); await check.getByRole("button", { name: "开始检查", exact: true }).click(); await expect(check.locator(".knowledge-check-issue")).toHaveCount(1);
   await check.getByRole("button", { name: "修复此处引用", exact: true }).click(); await expect(check.getByRole("region", { name: "修复引用", exact: true })).toBeVisible();
   await expect(check.locator(".knowledge-repair-context strong")).toHaveCSS("-webkit-line-clamp", "3");
