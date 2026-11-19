@@ -853,6 +853,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
           <button className="icon-button mobile-sidebar-close" title="关闭导航" aria-label="关闭导航" onClick={() => setShowSidebar(false)}><X size={16} /></button>
         </div>
         <div className="sidebar-brand-divider" />
+        <button className={`sidebar-knowledge-button ${knowledgeOpen ? "active" : ""}`} type="button" aria-current={knowledgeOpen ? "page" : undefined} onClick={() => void (async () => { try { if (selectedPage) await flushPageEdits(selectedPage.id); setKnowledgeOpen(true); setTrashOpen(false); setShowSidebar(false); refreshKnowledge(); } catch (error) { setError(error instanceof Error ? error.message : "请先保存页面"); } })()}><LibraryBig size={15} />知识库</button>
         {pins.length > 0 && <ScrollArea className="pinned-section" label="置顶列表">
           <div className="section-label pinned-section-title"><Pin size={13} />置顶</div>
           {pins.map((item) => <div className="pinned-row" key={`${item.type}:${item.id}`}>
@@ -935,7 +936,6 @@ export function Workspace({ appVersion }: { appVersion: string }) {
             </section>;
           })}
         </ScrollArea>
-        <button className={`sidebar-knowledge-button ${knowledgeOpen ? "active" : ""}`} type="button" aria-current={knowledgeOpen ? "page" : undefined} onClick={() => void (async () => { try { if (selectedPage) await flushPageEdits(selectedPage.id); setKnowledgeOpen(true); setTrashOpen(false); setShowSidebar(false); refreshKnowledge(); } catch (error) { setError(error instanceof Error ? error.message : "请先保存页面"); } })()}><LibraryBig size={15} />知识库</button>
         <button className={`sidebar-trash-button ${trashOpen ? "active" : ""}`} aria-current={trashOpen ? "page" : undefined} type="button" onClick={() => void openTrash()}><Trash2 size={15} />垃圾箱</button>
         <footer className="sidebar-footer">
           <span className="user-avatar">{user?.username?.slice(0, 1).toLocaleUpperCase() ?? "U"}</span>
