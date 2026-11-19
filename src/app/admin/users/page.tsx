@@ -5,7 +5,7 @@ import { Download, FileUp, KeyRound, Pencil, Users, Trash2 } from "lucide-react"
 import { useKnowledgeImportConflicts } from "@/components/knowledge-import-conflicts";
 import { useConfirm } from "@/components/ui/alert-dialog";
 
-type AdminUser = { id: string; username: string; createdAt: string; notebookCount: number; pageCount: number; imageCount: number; storageBytes: number };
+type AdminUser = { id: string; username: string; createdAt: string; notebookCount: number; pageCount: number; entryCount: number; imageCount: number; storageBytes: number };
 export default function AdminUsersPage() {
   const confirm = useConfirm();
   const { chooseConflictPolicy, conflictDialog } = useKnowledgeImportConflicts();
@@ -129,6 +129,7 @@ export default function AdminUsersPage() {
         <dl className="admin-user-metrics" aria-label={`${user.username} 使用统计`}>
           <div><dt>笔记本</dt><dd>{user.notebookCount.toLocaleString("zh-CN")}</dd></div>
           <div><dt>页面</dt><dd>{user.pageCount.toLocaleString("zh-CN")}</dd></div>
+          <div><dt>词条</dt><dd>{user.entryCount.toLocaleString("zh-CN")}</dd></div>
           <div><dt>图片</dt><dd>{user.imageCount.toLocaleString("zh-CN")}</dd></div>
           <div><dt>存储用量</dt><dd>{formatSize(user.storageBytes)}</dd></div>
         </dl>

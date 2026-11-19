@@ -27,7 +27,8 @@ test("knowledge previews, shared editor, aliases, cycle navigation, backlinks an
   await modal.getByRole("button", { name: "编辑词条", exact: true }).click();
   await modal.getByLabel("词条名称", { exact: true }).fill("操作系统新名"); await modal.getByLabel("词条别名", { exact: true }).fill("OS,Operating System,OS");
   await modal.getByRole("button", { name: "保存", exact: true }).click(); await expect(modal.getByRole("heading", { name: "操作系统新名", exact: true })).toBeVisible();
-  await expect(modal.locator('[contenteditable="true"]')).toBeVisible(); await modal.getByLabel("阅读词条", { exact: true }).click();
+  await expect(modal.locator('[contenteditable="true"]')).toBeVisible(); await expect(modal.getByLabel("阅读词条", { exact: true })).toHaveCount(0);
+  await modal.getByLabel("关闭词条", { exact: true }).click(); await editor.locator(`[data-entry-id="${a.id}"]`).first().click(); await page.getByRole("button", { name: "查看完整词条", exact: true }).click();
   const saved = (await (await page.request.get(`/api/knowledge/${a.id}`)).json()).entry; expect(saved.aliases).toHaveLength(2); expect(saved.content).toContain(b.id);
   await modal.locator(".knowledge-backlink").filter({ hasText: "引用来源页面" }).click();
   await expect(modal).not.toBeVisible(); await expect(page.getByLabel("页面标题", { exact: true })).toHaveValue("引用来源页面"); await expect(editor.locator(`[data-entry-id="${a.id}"]`).first()).toHaveText("@操作系统新名");
@@ -70,8 +71,8 @@ test("reference checks repair exact occurrences without retired tag controls", a
   await page.goto(`/app?page=${note.id}`); const editor = page.locator('.workspace > .editor-panel .notebook-editor'); await expect(editor.locator(".knowledge-reference-invalid")).toHaveCount(2);
   await editor.locator("[data-knowledge-reference]").first().click(); await page.getByRole("button", { name: "引用检查与修复", exact: true }).click();
   const check = page.locator(".knowledge-check-dialog"); await check.getByRole("button", { name: "开始检查", exact: true }).click(); await expect(check.locator(".knowledge-check-issue")).toHaveCount(3);
-  const source = check.locator(".knowledge-check-issue").filter({ hasText: "引用来源页面" }); await source.first().getByRole("button", { name: "修复此处引用" }).click(); await check.getByRole("button", { name: "转换为普通文字", exact: true }).click(); await expect(check.locator(".knowledge-check-issue")).toHaveCount(2);
-  await source.first().getByRole("button", { name: "修复此处引用" }).click(); await check.getByLabel("搜索修复目标词条").fill("恢复操作系统"); await check.getByRole("button", { name: "创建词条并重新关联", exact: true }).click(); await expect(check.locator(".knowledge-check-issue")).toHaveCount(1);
+  const source = check.locator(".knowledge-check-issue").filter({ hasText: "引用来源页面" }); await source.first().getByRole("button", { name: "修复此处引用" }).click(); await check.getByRole("radio", { name: "转换为普通文字", exact: true }).check(); await check.getByRole("button", { name: "确认修复", exact: true }).click(); await expect(check.locator(".knowledge-check-issue")).toHaveCount(2);
+  await source.first().getByRole("button", { name: "修复此处引用" }).click(); await check.getByRole("radio", { name: "创建新词条", exact: true }).check(); await check.getByLabel("新词条名称").fill("恢复操作系统"); await check.getByRole("button", { name: "确认修复", exact: true }).click(); await expect(check.locator(".knowledge-check-issue")).toHaveCount(1);
   await check.getByLabel("关闭引用检查").click(); await expect(editor.locator("[data-knowledge-reference]")).toHaveCount(1); await expect(editor).toContainText("@操作系统");
   await expect(page.getByLabel("设置标签", { exact: true })).toHaveCount(0);
   expect((await page.request.get("/api/tags")).status()).toBe(404);
@@ -144,7 +145,7 @@ test("library route survives refresh and history, previews are opaque in both th
   await page.context().route("https://zh.wikipedia.org/**",route=>route.fulfill({contentType:"text/html",body:"<p>外链测试</p>"}));
   await preview.getByRole("button",{name:"查看完整词条",exact:true}).click(); const modal=page.locator(".knowledge-dialog"); const link=modal.getByRole("link",{name:"维基百科",exact:true}); await expect(link).toHaveAttribute("rel","noopener noreferrer");
   const opened=page.waitForEvent("popup"); await link.click(); const popup=await opened; await popup.waitForLoadState(); expect(popup.url()).toContain("zh.wikipedia.org/wiki/Docker"); expect(new URL(page.url()).pathname).toBe("/app"); await popup.close(); await expect(modal).toBeVisible(); await modal.getByLabel("关闭词条",{exact:true}).click();
-  await page.getByRole("button",{name:"知识库",exact:true}).click(); await expect(page).toHaveURL(/\/app\/library(?:\?|$)/); await expect(page.locator(".sidebar-knowledge-button svg")).toHaveClass(/lucide-library-big/); await expect(page.locator(".knowledge-import svg")).toHaveClass(/lucide-database-arrow-down/);
+  await page.getByRole("button",{name:"知识库",exact:true}).click(); await expect(page).toHaveURL(/\/app\/library(?:\?|$)/); await expect(page.locator(".sidebar-knowledge-button svg")).toHaveClass(/lucide-library-big/); await expect(page.locator(".knowledge-import svg")).toHaveClass(/lucide-database-arrow-up/);
   await page.reload(); await expect(page.locator(".knowledge-library")).toBeVisible(); await expect(page.getByRole("button",{name:"管理标签",exact:true})).toHaveCount(0);
   await page.getByRole("button",{name:"返回笔记本",exact:true}).click(); await expect(page).toHaveURL(/\/app(?:\?|$)/); await page.goBack(); await expect(page.locator(".knowledge-library")).toBeVisible(); await expect(page).toHaveURL(/\/app\/library(?:\?|$)/);
   // A concurrent-target 409 without a conflict list is an error, not a broken chooser.

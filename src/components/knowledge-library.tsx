@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { LibraryBig, Plus, Search, ArrowDownWideNarrow, DatabaseArrowDown, DatabaseArrowUp } from "lucide-react";
+import { LibraryBig, BookOpenText, Plus, Search, ArrowDownWideNarrow, DatabaseArrowDown, DatabaseArrowUp } from "lucide-react";
 import { getKnowledgeCatalog, subscribeKnowledge, knowledgeRequest, type KnowledgeSummary } from "@/lib/knowledge-client";
 import { useFormDialog } from "@/components/ui/dialog";
 import { notify } from "@/lib/notifications";
@@ -40,8 +40,8 @@ export function KnowledgeLibrary({ onImport }: { onImport: (file: File) => void 
     <header className="knowledge-library-heading">
       <div className="knowledge-library-title"><h1 className="text-ui-title"><LibraryBig size={24} />知识库</h1><p className="text-ui-secondary">记录独立知识，在笔记中用 @ 建立关联。</p></div>
       <div className="knowledge-library-actions">
-        <label className="button-outline knowledge-import"><DatabaseArrowDown size={16} />导入知识库<input type="file" accept=".cnf" aria-label="导入知识库文件" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) onImport(file); }} /></label>
-        <button className="button-outline" type="button" disabled={exporting} onClick={() => void exportLibrary()}><DatabaseArrowUp size={16} />{exporting ? "正在导出…" : "导出知识库"}</button>
+        <label className="button-outline knowledge-import"><DatabaseArrowUp size={16} />导入知识库<input type="file" accept=".cnf" aria-label="导入知识库文件" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) onImport(file); }} /></label>
+        <button className="button-outline" type="button" disabled={exporting} onClick={() => void exportLibrary()}><DatabaseArrowDown size={16} />{exporting ? "正在导出…" : "导出知识库"}</button>
         <button className="button-primary" type="button" disabled={busy} onClick={() => void create()}><Plus size={16} />新建词条</button>
       </div>
     </header>
@@ -52,8 +52,8 @@ export function KnowledgeLibrary({ onImport }: { onImport: (file: File) => void 
     <div className="knowledge-list-caption"><span>{query ? "搜索结果" : "全部词条"} · {visible.length}</span><span role="status">{loading ? "正在查找…" : ""}</span></div>
     <div className="knowledge-entry-list" aria-busy={loading}>
       {visible.map((entry) => <button type="button" className="knowledge-entry-row" key={entry.id} aria-label={`打开词条：${entry.title}`} onClick={() => openKnowledge(entry.id)}>
-        <span className="knowledge-entry-icon"><LibraryBig size={19} /></span>
-        <span className="knowledge-entry-main"><strong title={entry.title}>{entry.title}</strong><span className="knowledge-entry-summary">{entry.summary || "暂无正文"}</span>{entry.aliases.length > 0 && <span className="knowledge-entry-aliases" title={entry.aliases.join("、")}>{entry.aliases.join(" · ")}</span>}</span>
+        <span className="knowledge-entry-icon"><BookOpenText size={19} /></span>
+        <span className="knowledge-entry-main"><strong title={entry.title}>{entry.title}</strong><span className="knowledge-entry-summary">{entry.summary || "暂无内容"}</span>{entry.aliases.length > 0 && <span className="knowledge-entry-aliases" title={entry.aliases.join("、")}>{entry.aliases.join(" · ")}</span>}</span>
         <time dateTime={entry.updatedAt} title="最后修改时间">{new Date(entry.updatedAt).toLocaleDateString("zh-CN")}</time>
       </button>)}
       {!loading && !visible.length && <div className="knowledge-empty"><LibraryBig size={36} /><h2 className="text-ui-heading">{query ? "没有匹配的词条" : "从一个词条开始"}</h2><p>{query ? "试试其他名称、别名或关键词。" : "可以记录简短定义，也可以写一篇完整的知识文章。"}</p>{!entries.length && <button className="button-primary" onClick={() => void create()} disabled={busy}><Plus size={16} />创建第一个词条</button>}</div>}

@@ -39,8 +39,8 @@ test("library fits long content at all UI sizes and desktop/tablet/mobile widths
       if (preset === "standard" && [1440, 390].includes(width)) await page.screenshot({ path: testInfo.outputPath(`library-${width}.png`) });
     }
   }
-  await expect(page.locator(".knowledge-import svg")).toHaveClass(/lucide-database-arrow-down/);
-  await expect(page.getByRole("button", { name: "导出知识库", exact: true }).locator("svg")).toHaveClass(/lucide-database-arrow-up/);
+  await expect(page.locator(".knowledge-import svg")).toHaveClass(/lucide-database-arrow-up/);
+  await expect(page.getByRole("button", { name: "导出知识库", exact: true }).locator("svg")).toHaveClass(/lucide-database-arrow-down/);
 });
 
 test("mention menu, truncated preview and reference repair remain readable without horizontal overflow", async ({ page, baseURL }, testInfo) => {
@@ -71,7 +71,7 @@ test("mention menu, truncated preview and reference repair remain readable witho
   await page.screenshot({ path: testInfo.outputPath("entry-preview.png") }); await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "账号与设置", exact: true }).click(); await page.getByRole("menuitem", { name: "数据管理", exact: true }).hover(); await page.getByRole("menuitem", { name: "引用检查", exact: true }).click();
   const check = page.locator(".knowledge-check-dialog"); await expect(check).toBeVisible(); await check.getByRole("button", { name: "开始检查", exact: true }).click(); await expect(check.locator(".knowledge-check-issue")).toHaveCount(1);
-  await check.getByRole("button", { name: "修复此处引用", exact: true }).click(); await expect(check.getByRole("complementary", { name: "修复引用", exact: true })).toBeVisible();
+  await check.getByRole("button", { name: "修复此处引用", exact: true }).click(); await expect(check.getByRole("region", { name: "修复引用", exact: true })).toBeVisible();
   await expect(check.locator(".knowledge-repair-context strong")).toHaveCSS("-webkit-line-clamp", "3");
   for (const width of [1280, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 900 }); await expectNoHorizontalScroll(page, ".knowledge-check-dialog"); await expectNoHorizontalScroll(page, ".knowledge-check-scroll");

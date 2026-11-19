@@ -160,3 +160,16 @@ docker compose -f docker-compose.e2e.yml down
 初次完整浏览器进程在 27 项通过后被终止，不计作完整通过；最终镜像上分组执行全部 38 项并通过：`test-results/knowledge-ui-final` 为 15 项知识库、字号和工具栏回归，`test-results/knowledge-ui-regression` 为剩余 23 项原功能回归。最终截图已复核，另验证了深色联想菜单、长引用摘要截断，以及保存后编辑器 DOM 保持不变并可继续输入。
 
 所有截图来自隔离夹具，不包含真实账号或正文。一次性服务已清理，没有数据库迁移或真实环境改动；Safari／Firefox、真实手机与操作系统输入法等验收限制仍适用。
+
+
+## 中文输入与管理控制台修正（1.1.1118）
+
+新增 `knowledge-mention-plugin` 的 7 项单元回归，验证批量 @中文、组合输入期间不确认、触发符替换、Esc／代码边界、销毁释放和 ProseMirror 插件视图重建。新增 `admin-knowledge` 的 2 项隔离集成回归，覆盖归一别名、LIKE 字面转义、元数据范围、分页与回收站。最终 28 个文件、101 项单元／集成测试通过；类型检查、ESLint 和隔离生产构建通过。
+
+`knowledge-input-admin.spec.ts` 使用 Chromium CDP 的 `Input.imeSetComposition` 与 `Input.insertText` 发出组合输入事件，验证 `@内存` 整段提交、`@` 后组合输入、中文邻接、替换原触发符，以及 Esc 和邮箱排除。它经过真实编辑器／ProseMirror 事件链，仍不等同于逐一实测 Windows／macOS／Linux 原生输入法。后台专项经真实 HTTP 验证普通用户拒绝访问、管理员概览与用户词条数、列表分页与状态筛选，断言接口不返回正文。
+
+引用修复测试改为先选处理方式、再确认提交，继续检查逐处修复、剩余问题数量及正文；保存测试确认不再有额外阅读按钮。图标断言同步为导入 DatabaseArrowUp、导出 DatabaseArrowDown。测试数据仅使用临时数据库和一次性 3002 服务。
+
+完整 Chromium 回归按两组执行并通过全部 40 项：`test-results/knowledge-input-final` 为 21 项，`test-results/knowledge-input-regression` 为其余 19 项。截图复核包括桌面／移动引用修复和移动后台词条列表。
+
+最终补充“Esc 后删除触发符再用 IME 输入”的回归后，重新完成类型、Lint、101 项单元／集成验证及生产构建；最终镜像上的 11 项中文输入、后台、知识库及编辑器空闲专项再次通过（`test-results/knowledge-input-edge-final`）。本次一次性服务验证完成后清理，没有数据库迁移或真实环境改动。

@@ -2,54 +2,21 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { LibraryBig, Plus } from "lucide-react";
 import type { Editor } from "@tiptap/core";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { canStartKnowledgeMention } from "@/lib/knowledge-trigger";
+import { createKnowledgeMentionPlugin, knowledgeMentionKey as key, type KnowledgeMention } from "@/lib/knowledge-mention-plugin";
 import { normalizeKnowledgeName } from "@/lib/knowledge-document";
 import { getKnowledgeCatalog, subscribeKnowledge, knowledgeRequest, setKnowledgeCatalog, type KnowledgeSummary } from "@/lib/knowledge-client";
 import { notify } from "@/lib/notifications";
 
-type Mention = { from: number; to: number; query: string };
-const key = new PluginKey<Mention | null>("knowledgeMention");
 export function KnowledgeMentions({ editor, currentEntryId }: { editor: Editor; currentEntryId?: string }) {
   const catalog = useSyncExternalStore(subscribeKnowledge, getKnowledgeCatalog, getKnowledgeCatalog);
   const busyRef = useRef(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const [mention, setMention] = useState<Mention | null>(null), [index, setIndex] = useState(0), [busy, setBusy] = useState(false);
+  const [mention, setMention] = useState<KnowledgeMention | null>(null), [index, setIndex] = useState(0), [busy, setBusy] = useState(false);
   const keyHandler = useRef<(event: KeyboardEvent) => boolean>(() => false);
   const currentEntry = useRef(currentEntryId);
   useEffect(() => { currentEntry.current = currentEntryId; }, [currentEntryId]);
   useEffect(() => {
-    let previous: Mention | null = null;
-    const plugin = new Plugin<Mention | null>({
-      key,
-      state: {
-        init: () => null,
-        apply(tr, active, _old, state) {
-          if (tr.getMeta(key) === "close") return null;
-          const start = tr.getMeta(key) as { from?: number } | undefined;
-          if (!active && start?.from === undefined) return null;
-          const from = start?.from ?? tr.mapping.map(active!.from), to = state.selection.from;
-          if (!state.selection.empty || from < 0 || to <= from || to - from > 121 || state.doc.resolve(from).parent !== state.selection.$from.parent) return null;
-          const text = state.doc.textBetween(from, to, "\0", "\0");
-          if (!text.startsWith("@") || /^@[\s@]/.test(text) || text.includes("\0") || text.includes("\n")) return null;
-          if (state.selection.$from.parent.type.spec.code || state.selection.$from.marks().some((mark) => ["code", "link"].includes(mark.type.name))) return null;
-          return { from, to, query: text.slice(1) };
-        }
-      },
-      props: {
-        handleTextInput(view, from, to, text) {
-          if (view.composing || text !== "@" || !canStartKnowledgeMention(view.state, from, to)) return false;
-          view.dispatch(view.state.tr.insertText(text, from, to).setMeta(key, { from })); return true;
-        },
-        handlePaste(view) { if (key.getState(view.state)) view.dispatch(view.state.tr.setMeta(key, "close")); return false; },
-        handleKeyDown(view, event) { if (view.composing || event.isComposing || event.keyCode === 229 || !key.getState(view.state)) return false; return keyHandler.current(event); }
-      },
-      view: () => ({ update(view) {
-        const next = key.getState(view.state) ?? null;
-        if (next?.from === previous?.from && next?.to === previous?.to && next?.query === previous?.query) return;
-        previous = next; setMention(next); setIndex(0);
-      }, destroy() { setMention(null); } })
-    });
+    const plugin = createKnowledgeMentionPlugin((next) => { setMention(next); setIndex(0); }, (event) => keyHandler.current(event));
     editor.registerPlugin(plugin, (_newPlugin, plugins) => [plugin, ...plugins]);
     return () => { if (!editor.isDestroyed) editor.unregisterPlugin(key); };
   }, [editor]);
