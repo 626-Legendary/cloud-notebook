@@ -30,7 +30,7 @@ test("Editor workspace, real fonts, search, print, trash and responsive layout",
   const content = { type: "doc", content: [paragraph("字体测试 Cloud Notebook English 中文"), paragraph("Unselected text stays unchanged"), ...[1, 2, 3].map((level) => ({ type: "heading", attrs: { level }, content: [text(`Heading ${level}`)] })), table(2, 2), table(3, 5), paragraph("Search needle Search needle"), { type: "paragraph", content: [{ ...text("Legacy inline code"), marks: [{ type: "code" }] }] }] };
   expect((await page.request.patch(`/api/pages/${note.id}`, { headers: { Origin: baseURL! }, data: { version: note.version, content } })).ok()).toBeTruthy();
   await page.goto("/app");
-  await page.getByRole("button", { name: "V3.1 浏览器测试", exact: true }).click();
+  await page.getByRole("region", { name: "工作空间列表" }).getByRole("button", { name: "V3.1 浏览器测试", exact: true }).click();
   await expect(page.locator(".notebook-editor")).toBeVisible();
   await page.getByTitle("页面操作", { exact: true }).click();
   await expect(page.getByRole("menuitem").nth(0)).toHaveText("置顶页面");
@@ -109,7 +109,7 @@ test("Editor workspace, real fonts, search, print, trash and responsive layout",
   await find.press("Escape"); await expect(find).not.toBeVisible();
   await page.keyboard.press("Control+s");
   await expect.poll(async () => (await (await page.request.get(`/api/pages/${note.id}`)).json()).page.content).toContain("--font-merriweather");
-  await page.reload(); await page.getByRole("button", { name: "V3.1 浏览器测试", exact: true }).click(); await expect(page.locator(".notebook-editor > p").first().locator("span")).toHaveCSS("font-family", /Merriweather/i);
+  await page.reload(); await page.getByRole("region", { name: "工作空间列表" }).getByRole("button", { name: "V3.1 浏览器测试", exact: true }).click(); await expect(page.locator(".notebook-editor > p").first().locator("span")).toHaveCSS("font-family", /Merriweather/i);
   await page.screenshot({ path: testInfo.outputPath("workspace-1440.png"), fullPage: true });
   await page.getByRole("button", { name: "垃圾箱", exact: true }).click();
   await expect(page.locator(".editor-panel .trash-page")).toBeVisible();

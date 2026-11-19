@@ -1,11 +1,15 @@
 services:
   tunnel:
     image: cloudflare/cloudflared:latest
-    container_name: cloudflared-tunnel
+    container_name: notebook-cloudflared-tunnel
+    labels:
+      description: "Cloudflare 内网穿透隧道"
     restart: unless-stopped
     command: ["tunnel", "--no-autoupdate", "run", "--token", "${CLOUDFLARE_TUNNEL_TOKEN:-}"]
   cloud-notebook:
     container_name: cloud-notebook
+    labels:
+      description: "云笔记应用"
     build:
       context: .
       dockerfile: Dockerfile
@@ -18,7 +22,7 @@ services:
     environment:
       NODE_ENV: production
       CLOUD_NOTEBOOK_ENV: production
-      APP_VERSION: ${APP_VERSION:-1.1.1119b}
+      APP_VERSION: ${APP_VERSION:-1.1.1119e}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       DATABASE_URL: /app/data/cloud-notebook.db
       APP_URL: ${APP_URL:-http://localhost:3000}

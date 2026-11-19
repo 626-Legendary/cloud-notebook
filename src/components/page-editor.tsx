@@ -9,6 +9,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { BubbleMenu } from "@tiptap/react/menus";
 import { TextSelection, type SelectionBookmark, type Transaction } from "@tiptap/pm/state";
+import { EditableCode } from "@/components/code-block";
 import { documentExtensions } from "@/lib/editor-extensions";
 import { selectedTableWidth, MAX_TABLE_COLUMNS } from "@/lib/table-limit";
 import type { Node as ProseMirrorNode, Schema } from "@tiptap/pm/model";
@@ -36,6 +37,13 @@ import { autoSaveDelay } from "@/lib/auto-save";
 import { serializePageSave, registerPageFlush, waitForPageSaves } from "@/lib/page-save-queue";
 import { breadcrumbTitle } from "@/lib/display-title";
 import { WorkspaceLoading } from "@/components/workspace-loading";
+
+const knowledgeNodeViews = Extension.create({
+  name: "knowledgeNodeViews",
+  addProseMirrorPlugins() {
+    return [new Plugin({ props: { nodeViews: { knowledgeReference: knowledgeNodeView } } })];
+  },
+});
 
 type SaveState = "saved" | "dirty" | "saving" | "error" | "conflict";
 type PageData = Pick<Page, "id" | "title" | "content" | "version" | "updatedAt">;
@@ -152,7 +160,7 @@ export function PageEditor({
   // Workspace keys this component by page ID and explicit restore revision.
   // Saving updates the page prop, but must not replace the live editor content.
   const [initialDocument] = useState(() => ({
-    extensions: [...documentExtensions(), pageFindExtension],
+    extensions: [...documentExtensions(true), EditableCode, knowledgeNodeViews, pageFindExtension],
     content: JSON.parse(page.content)
   }));
   const editor = useEditor({
@@ -160,7 +168,6 @@ export function PageEditor({
     extensions: initialDocument.extensions,
     content: initialDocument.content,
     editorProps: {
-      nodeViews: { knowledgeReference: knowledgeNodeView },
       handleClickOn: (_view, _pos, node, nodePos, event) => {
         if (node.type.name !== "knowledgeReference") return false;
         window.dispatchEvent(new CustomEvent("cloud-notebook:knowledge-preview", { detail: { id: node.attrs.entryId, from: nodePos, to: nodePos + node.nodeSize, sourceType: resourceType, sourceId: page.id, x: event.clientX, y: event.clientY } }));

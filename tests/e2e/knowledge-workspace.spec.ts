@@ -46,25 +46,30 @@ test("knowledge previews, shared editor, aliases, cycle navigation, backlinks an
 test("manual @ mentions preserve email/code/paste/IME and create only on explicit confirmation", async ({ page, baseURL }) => {
   const { note, a } = await setup(page, baseURL!); await page.goto(`/app?page=${note.id}`); const editor = page.locator('.workspace > .editor-panel .notebook-editor'); await expect(editor).toBeVisible();
   const menu = page.getByRole("listbox", { name: "知识库词条联想" });
-  for (const text of ["user@example.com", "hello@world.com", "@@", "@ ", "https://site.test/@test"]) { await editor.fill(""); await editor.pressSequentially(text); await expect(menu).not.toBeVisible(); await expect(editor).toHaveText(text.trimEnd()); }
-  await editor.fill(""); await editor.pressSequentially("@"); await expect(menu).toBeVisible(); await editor.press("Escape"); await expect(menu).not.toBeVisible(); await expect(editor).toHaveText("@");
-  await editor.fill(""); await editor.pressSequentially("@"); await editor.press("ArrowDown"); await editor.press("Enter"); await expect(editor.locator("[data-knowledge-reference]")).toHaveText("@虚拟内存");
-  await editor.fill(""); await editor.pressSequentially("@OS"); await expect(menu).toContainText("操作系统"); await editor.press("Enter"); await expect(editor.locator(`[data-entry-id="${a.id}"]`)).toHaveCount(1);
+  const clearEditor = async () => {
+    await editor.press("Control+a");
+    await editor.press("Backspace");
+    await expect(editor).toBeEmpty();
+  };
+  for (const text of ["user@example.com", "hello@world.com", "@@", "@ ", "https://site.test/@test"]) { await clearEditor(); await editor.pressSequentially(text); await expect(menu).not.toBeVisible(); await expect(editor).toHaveText(text.trimEnd()); }
+  await clearEditor(); await editor.pressSequentially("@"); await expect(menu).toBeVisible(); await editor.press("Escape"); await expect(menu).not.toBeVisible(); await expect(editor).toHaveText("@");
+  await clearEditor(); await editor.pressSequentially("@"); await expect(menu.getByRole("option")).toHaveCount(2); await editor.press("ArrowDown"); await editor.press("Enter"); await expect(editor.locator("[data-knowledge-reference]")).toHaveText("@虚拟内存");
+  await clearEditor(); await editor.pressSequentially("@OS"); await expect(menu).toContainText("操作系统"); await editor.press("Enter"); await expect(editor.locator(`[data-entry-id="${a.id}"]`)).toHaveCount(1);
   await editor.press("Control+z"); await expect(editor.locator("[data-knowledge-reference]")).toHaveCount(0); await editor.press("Control+Shift+z"); await expect(editor.locator("[data-knowledge-reference]")).toHaveCount(1);
   await editor.press("Control+a"); await editor.press("Backspace"); await editor.pressSequentially("@"); await expect(menu).toBeVisible(); await editor.pressSequentially("新概念"); await expect(menu.getByRole("option", { name: "创建词条「新概念」" })).toBeVisible();
   expect((await (await page.request.get("/api/knowledge?q=新概念")).json()).entries).toHaveLength(0);
   await editor.press("Escape"); await expect(editor).toHaveText("@新概念"); expect((await (await page.request.get("/api/knowledge?q=新概念")).json()).entries).toHaveLength(0);
-  await editor.fill(""); await editor.pressSequentially("@新概念"); await editor.press("Enter"); await expect(editor.locator("[data-knowledge-reference]")).toHaveText("@新概念");
+  await clearEditor(); await editor.pressSequentially("@新概念"); await editor.press("Enter"); await expect(editor.locator("[data-knowledge-reference]")).toHaveText("@新概念");
   await editor.press("Control+s"); await expect.poll(async () => (await (await page.request.get(`/api/pages/${note.id}`)).json()).page.content).toContain("knowledgeReference");
   await page.reload(); await expect(editor.locator("[data-knowledge-reference]")).toHaveText("@新概念");
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await editor.click(); await editor.press("Control+a"); await editor.press("Control+c"); await editor.press("ArrowRight"); await editor.press("Control+v"); await expect(editor.locator("[data-knowledge-reference]")).toHaveCount(2); await expect(menu).not.toBeVisible();
   // Paste must stay ordinary text rather than invoking the manual trigger.
-  await editor.fill(""); await editor.evaluate((element) => { const data = new DataTransfer(); data.setData("text/plain", "@操作系统"); element.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true })); });
+  await clearEditor(); await editor.evaluate((element) => { const data = new DataTransfer(); data.setData("text/plain", "@操作系统"); element.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true })); });
   await expect(editor).toHaveText("@操作系统"); await expect(menu).not.toBeVisible(); await expect(editor.locator("[data-knowledge-reference]")).toHaveCount(0);
-  await editor.fill(""); await editor.pressSequentially("@"); await editor.dispatchEvent("compositionstart", { data: "" });
+  await clearEditor(); await editor.pressSequentially("@"); await editor.dispatchEvent("compositionstart", { data: "" });
   await editor.dispatchEvent("keydown", { key: "Enter", code: "Enter", isComposing: true }); await expect(editor.locator("[data-knowledge-reference]")).toHaveCount(0); await editor.dispatchEvent("compositionend", { data: "操作" }); await editor.press("Escape");
-  await editor.fill(""); await page.getByLabel("标题样式", { exact: true }).selectOption("p");
+  await clearEditor(); await page.getByLabel("标题样式", { exact: true }).selectOption("p");
   await editor.pressSequentially("```"); await editor.press("Space"); await editor.pressSequentially("@test"); await expect(menu).not.toBeVisible();
 });
 
@@ -105,7 +110,7 @@ test("new empty entries reuse the editor for references, keyboard save, modal na
   const modal = page.locator(".knowledge-dialog"); await expect(modal.getByRole("heading", { name: "独立词条", exact: true })).toBeVisible(); await expect(modal.getByRole("button", { name: "保存", exact: true })).toBeVisible();
   const editor = modal.locator(".notebook-editor"); await expect(editor).toBeVisible(); await editor.pressSequentially("@OS"); await editor.press("Enter"); await expect(editor.locator(`[data-entry-id="${a.id}"]`)).toHaveCount(1);
   await editor.pressSequentially("@独立词条"); await expect(page.getByRole("option", { name: "创建词条「独立词条」" })).toHaveCount(0); await editor.press("Escape"); await expect(modal).toBeVisible(); await expect(editor).toContainText("@独立词条");
-  await editor.click(); await editor.press("Control+s");
+  await editor.press("Control+s");
   const entry = (await (await page.request.get("/api/knowledge?q=独立词条")).json()).entries.find((item: { title: string }) => item.title === "独立词条");
   await expect.poll(async () => (await (await page.request.get(`/api/knowledge/${entry.id}`)).json()).entry.content).toContain(a.id);
   const originalEditor = await editor.elementHandle();
@@ -151,7 +156,7 @@ test("library route survives refresh and history, previews are opaque in both th
   const opened=page.waitForEvent("popup"); await link.click(); const popup=await opened; await popup.waitForLoadState(); expect(popup.url()).toContain("zh.wikipedia.org/wiki/Docker"); expect(new URL(page.url()).pathname).toBe("/app"); await popup.close(); await expect(modal).toBeVisible(); await modal.getByLabel("关闭词条",{exact:true}).click();
   await page.getByRole("button",{name:"知识库",exact:true}).click(); await expect(page).toHaveURL(/\/app\/library(?:\?|$)/); await expect(page.locator(".sidebar-knowledge-button svg")).toHaveClass(/lucide-library-big/); await page.getByRole("button",{name:"更多操作",exact:true}).click(); await expect(page.getByRole("menuitem",{name:"导入知识库",exact:true}).locator("svg")).toHaveClass(/lucide-database-arrow-up/); await page.keyboard.press("Escape");
   await page.reload(); await expect(page.locator(".knowledge-library")).toBeVisible(); await expect(page.getByRole("button",{name:"管理标签",exact:true})).toHaveCount(0);
-  await page.getByRole("button",{name:"返回笔记本",exact:true}).click(); await expect(page).toHaveURL(/\/app(?:\?|$)/); await page.goBack(); await expect(page.locator(".knowledge-library")).toBeVisible(); await expect(page).toHaveURL(/\/app\/library(?:\?|$)/);
+  await page.getByRole("button",{name:"返回",exact:true}).click(); await expect(page).toHaveURL(/\/app(?:\?|$)/); await page.goBack(); await expect(page.locator(".knowledge-library")).toBeVisible(); await expect(page).toHaveURL(/\/app\/library(?:\?|$)/);
   // A concurrent-target 409 without a conflict list is an error, not a broken chooser.
   await page.route("**/api/notebooks/import",route=>route.fulfill({status:409,json:{error:"目标知识库已改变，请重新导入"}}));
   await page.getByLabel("导入知识库文件",{exact:true}).setInputFiles({name:"conflict.cnf",mimeType:"application/zip",buffer:Buffer.from("test")});
@@ -167,8 +172,8 @@ test("administrator restore lists conflicts and supports cancel, reuse and keepi
   if(me.mustChangePassword){expect((await page.request.post("/api/auth/change-password",{headers,data:{password:pwd,confirmPassword:pwd}})).ok()).toBe(true);expect((await page.request.post("/api/auth/login",{headers,data:{username:"admin",password:pwd}})).ok()).toBe(true);}
   const exported=await page.request.get(`/api/admin/users/${owner.id}/export`); expect(exported.ok()).toBe(true); const zip={name:"user-backup.zip",mimeType:"application/zip",buffer:await exported.body()};
   await page.goto("/admin/users"); const row=page.locator(".admin-user-row").filter({has:page.locator(".admin-user-main strong").filter({hasText:new RegExp(`^${owner.username}$`)})});
-  async function select(){await row.locator('input[type="file"]').setInputFiles(zip); await page.getByRole("alertdialog").getByRole("button",{name:"恢复备份",exact:true}).click(); await expect(page.getByRole("dialog",{name:"处理导入词条冲突",exact:true})).toBeVisible();}
-  await select(); const conflict=page.getByRole("dialog",{name:"处理导入词条冲突",exact:true}); await expect(conflict.locator("li")).toHaveCount(2); await conflict.getByRole("button",{name:"取消导入",exact:true}).click(); await expect(row.locator('input[type="file"]')).toBeEnabled();
+  async function select(){await row.getByRole("button",{name:`${owner.username} 更多操作`}).click(); const chooser=page.waitForEvent("filechooser"); await page.getByRole("menuitem",{name:"恢复备份",exact:true}).click(); await (await chooser).setFiles(zip); await page.getByRole("alertdialog").getByRole("button",{name:"恢复备份",exact:true}).click(); await expect(page.getByRole("dialog",{name:"处理导入词条冲突",exact:true})).toBeVisible();}
+  await select(); const conflict=page.getByRole("dialog",{name:"处理导入词条冲突",exact:true}); await expect(conflict.locator("li")).toHaveCount(2); await conflict.getByRole("button",{name:"取消导入",exact:true}).click(); await expect(row.getByRole("button",{name:`${owner.username} 更多操作`})).toBeEnabled();
   await select(); await conflict.getByRole("button",{name:"复用已有词条",exact:true}).click(); await expect(page.getByRole("status")).toContainText("复用 2 个");
   await select(); await conflict.getByRole("button",{name:"保留双方并重命名",exact:true}).click(); await expect(page.getByRole("status")).toContainText("重命名 2 个");
   expect((await page.request.post("/api/auth/login",{headers,data:{username:owner.username,password:"BrowserTest12345"}})).ok()).toBe(true);

@@ -119,14 +119,15 @@ test("admin layout stays full-width with stable mobile navigation and user delet
     }
     await page.goto("/admin/users");
     const row = page.locator(".admin-user-row").filter({ has: page.getByText(user.username, { exact: true }) });
-    await expect(row.locator(".admin-user-metrics dt")).toHaveText(["笔记本", "页面", "词条", "图片", "存储用量"]);
-    expect((await row.locator(".admin-user-metrics dd").allTextContents()).slice(0, 4)).toEqual(["1", "1", "0", "1"]);
-    const remove = row.getByRole("button", { name: "删除用户", exact: true });
-    await expect(remove).toHaveCSS("background-color", "rgb(186, 57, 50)");
+    await expect(row.locator(".admin-user-stat")).toHaveText(["笔记本1", "页面1", "词条0", "图片1", "存储用量68 B"]);
+    const menu = row.getByRole("button", { name: `${user.username} 更多操作` });
+    const remove = page.getByRole("menuitem", { name: "删除用户", exact: true });
     await page.screenshot({ path: testInfo.outputPath("admin-users-mobile.png"), fullPage: true });
+    await menu.click();
     await remove.click();
     await page.getByRole("alertdialog").getByRole("button", { name: "取消", exact: true }).click();
     await expect(row).toBeVisible(); expect((await victim.request.get("/api/auth/me")).status()).toBe(200);
+    await menu.click();
     await remove.click();
     const response = page.waitForResponse((response) => response.request().method() === "DELETE" && new URL(response.url()).pathname === `/api/admin/users/${user.id}`);
     await page.getByRole("alertdialog").getByRole("button", { name: "永久删除用户", exact: true }).click();

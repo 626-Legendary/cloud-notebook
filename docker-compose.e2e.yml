@@ -1,21 +1,21 @@
 # Disposable browser test environment. No production volume or .env file is used.
 name: cloud-notebook-e2e
 services:
-  cloud-notebook-v31-e2e:
+  cloud-notebook-test-e2e:
     build: .
-    image: cloud-notebook:v3.1-test
-    container_name: cloud-notebook-v31-e2e
+    image: cloud-notebook:test-e2e
+    container_name: cloud-notebook-test-e2e
     init: true
     ports:
       - "127.0.0.1:3002:3000"
     environment:
       NODE_ENV: production
       CLOUD_NOTEBOOK_ENV: test
-      APP_VERSION: 1.1.1119b
+      APP_VERSION: 1.1.1119e
       APP_URL: http://127.0.0.1:3002
-      DATABASE_URL: /app/data/v31-e2e.db
-      JWT_SECRET: v31-isolated-browser-test-secret-at-least-32-characters
-      ADMIN_INITIAL_PASSWORD: V31DisposableAdmin12345
+      DATABASE_URL: /app/data/test-e2e.db
+      JWT_SECRET: isolated-browser-test-secret-at-least-32-characters
+      ADMIN_INITIAL_PASSWORD: DisposableE2EAdmin12345
       BACKUP_ENABLED: "false"
     tmpfs:
       - /app/data:uid=1000,gid=1000,mode=0770,size=268435456

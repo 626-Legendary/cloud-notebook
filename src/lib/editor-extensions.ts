@@ -45,9 +45,9 @@ const assetImage = Image.extend({
 
 
 /** Shared by the live editor and native archive compatibility validation. */
-export function documentExtensions() {
+export function documentExtensions(interactiveCode = false) {
   return [
-      StarterKit.configure({ code: false, link: false, underline: false }),
+      StarterKit.configure({ code: false, link: false, underline: false, ...(interactiveCode ? { codeBlock: false as const, trailingNode: { notAfter: ["codeBlock"] } } : {}) }),
       LegacyCode,
       KnowledgeReference,
       Underline,

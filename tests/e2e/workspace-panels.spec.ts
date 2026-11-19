@@ -1,5 +1,31 @@
 import { test, expect } from "@playwright/test";
 
+test("empty and short paper fill available height without changing versions", async ({ page, baseURL }) => {
+  if (process.env.E2E_ALLOW_MUTATIONS !== "1" || baseURL !== "http://127.0.0.1:3002") throw new Error("Disposable server required");
+  const headers = { Origin: baseURL };
+  const password = "BrowserTest12345";
+  expect((await page.request.post("/api/auth/register", { headers, data: { username: `paper_${Date.now()}`, password, confirmPassword: password } })).ok()).toBe(true);
+  const { notebook } = await (await page.request.post("/api/notebooks", { headers, data: { title: "纸张验证" } })).json();
+  const { page: note } = await (await page.request.post(`/api/notebooks/${notebook.id}/pages`, { headers, data: { title: "空白页面" } })).json();
+  await page.goto(`/app?page=${note.id}`);
+  await expect(page.locator(".notebook-editor")).toBeVisible();
+  for (const [width, height] of [[2560, 1280], [1440, 900], [1024, 900], [390, 900]]) {
+    await page.setViewportSize({ width, height });
+    for (const dark of [false, true]) {
+      await page.locator("html").evaluate((element, value) => element.classList.toggle("dark", value), dark);
+      const dimensions = await page.locator(".editor-content-wrap").evaluate((paper) => ({ paper: paper.clientHeight, available: paper.parentElement!.clientHeight, bottom: paper.parentElement!.getBoundingClientRect().bottom - paper.getBoundingClientRect().bottom }));
+      expect(dimensions.paper).toBeGreaterThan(dimensions.available - 50);
+      expect(dimensions.bottom).toBeGreaterThanOrEqual(14);
+      expect(dimensions.bottom).toBeLessThanOrEqual(24);
+    }
+  }
+  expect((await (await page.request.get(`/api/pages/${note.id}`)).json()).page.version).toBe(note.version);
+  await page.locator(".notebook-editor").fill("这是一段短正文。");
+  const bottom = await page.locator(".editor-content-wrap").evaluate((paper) => paper.parentElement!.getBoundingClientRect().bottom - paper.getBoundingClientRect().bottom);
+  expect(bottom).toBeGreaterThanOrEqual(14);
+  expect(bottom).toBeLessThanOrEqual(24);
+});
+
 test("page panel resizing preserves editing, persists width and shares edge scrollbars and hierarchy", async ({ page, baseURL }, testInfo) => {
   if (process.env.E2E_ALLOW_MUTATIONS !== "1" || baseURL !== "http://127.0.0.1:3002") throw new Error("Disposable 3002 server required");
   const headers = { Origin: baseURL }, password = "BrowserTest12345";
@@ -80,6 +106,13 @@ test("workspace navigation, export choices and trash route share the refined lay
  const {page:note}=await(await page.request.post(`/api/notebooks/${notebook.id}/pages`,{headers,data:{title:"布局页面"}})).json();
  await page.setViewportSize({width:1440,height:900});await page.goto(`/app?page=${note.id}`);await expect(page.locator(".notebook-editor")).toBeVisible();
  expect((await page.locator(".sidebar").boundingBox())!.width).toBe(260);await expect(page.locator(".pages-panel-title")).toHaveCount(0);
+ await expect(page.getByLabel("应用版本")).toHaveText("Ver 1.1.1119d");
+ await page.setViewportSize({width:390,height:844});
+ await expect(page.locator(".sidebar-toggle")).toBeHidden();
+ const breadcrumbs = page.getByRole("navigation", {name:"页面路径"});
+ await expect(breadcrumbs.getByRole("button")).toHaveCount(0);
+ await expect(breadcrumbs.locator('[aria-current="page"]')).toHaveText("布局页面");
+ await page.setViewportSize({width:1440,height:900});
  await page.getByRole("button",{name:"导出",exact:true}).click();
  await expect(page.locator(".export-format-actions button")).toHaveText(["打印 / 保存为 PDF","导出原生文件 (.cnf)","取消"]);
  await page.getByRole("button",{name:"取消",exact:true}).click();
@@ -87,10 +120,79 @@ test("workspace navigation, export choices and trash route share the refined lay
  expect((await page.request.post("/api/pins",{headers,data:{type:"notebook",id:notebook.id}})).ok()).toBe(true);await page.reload();
  await expect(page.locator(".pinned-item").filter({hasText:notebook.title}).locator("svg")).toHaveClass(/lucide-notebook-pen/);
  await page.getByRole("button",{name:"知识库",exact:true}).click();
- await expect(page.locator(".workspace-view-topbar").getByRole("button",{name:"返回笔记本",exact:true}).locator("svg")).toHaveClass(/lucide-arrow-left/);
- await page.getByRole("button",{name:"返回笔记本",exact:true}).click();
+ await expect(page.locator(".workspace-view-topbar").getByRole("button",{name:"返回",exact:true}).locator("svg")).toHaveClass(/lucide-arrow-left/);
+ await page.getByRole("button",{name:"返回",exact:true}).click();
  await page.getByRole("button",{name:"垃圾箱",exact:true}).click();await expect(page).toHaveURL(/\/app\/trash/);await expect(page.locator(".pages-panel")).toHaveCount(0);await page.reload();await expect(page.locator(".trash-page")).toBeVisible();
- await expect(page.locator(".workspace-view-topbar").getByRole("button",{name:"返回笔记本",exact:true}).locator("svg")).toHaveClass(/lucide-arrow-left/);
+ await expect(page.locator(".workspace-view-topbar").getByRole("button",{name:"返回",exact:true}).locator("svg")).toHaveClass(/lucide-arrow-left/);
  await page.screenshot({path:testInfo.outputPath("trash-route.png")});
- await page.getByRole("button",{name:"返回笔记本",exact:true}).click();await expect(page.locator(".notebook-editor")).toBeVisible();
+ await page.getByRole("button",{name:"返回",exact:true}).click();await expect(page.locator(".notebook-editor")).toBeVisible();
+});
+
+test("code language and copy preserve source while paper fills the viewport", async ({page,baseURL}) => {
+  if (process.env.E2E_ALLOW_MUTATIONS !== "1" || baseURL !== "http://127.0.0.1:3002") throw new Error("Disposable server required");
+  const headers = {Origin:baseURL}, password = "BrowserTest12345";
+  expect((await page.request.post("/api/auth/register",{headers,data:{username:`code_${Date.now()}`,password,confirmPassword:password}})).ok()).toBe(true);
+  const {notebook} = await (await page.request.post("/api/notebooks",{headers,data:{title:"代码"}})).json();
+  const {page:note} = await (await page.request.post(`/api/notebooks/${notebook.id}/pages`,{headers,data:{title:"脚本"}})).json();
+  const code = "def hello():\n    return 1\n# @" + "x".repeat(400);
+  expect((await page.request.patch(`/api/pages/${note.id}`,{headers,data:{version:note.version,content:{type:"doc",content:[{type:"codeBlock",content:[{type:"text",text:code}]}]}}})).ok()).toBe(true);
+  await page.context().grantPermissions(["clipboard-read","clipboard-write"]);
+  await page.goto(`/app?page=${note.id}`);
+  const block = page.locator(".document-code-block");
+  const language = block.getByLabel("代码语言");
+  await expect(language).toHaveValue("");
+  await expect(block.locator(".hljs-keyword")).toHaveCount(0);
+  await language.selectOption("python");
+  const keyword = block.locator(".hljs-keyword").first();
+  await expect(keyword).toHaveText("def");
+  const lightColor = await keyword.evaluate((element) => getComputedStyle(element).color);
+  await page.locator("html").evaluate((html) => html.classList.add("dark"));
+  await expect(keyword).not.toHaveCSS("color", lightColor);
+  await page.locator("html").evaluate((html) => html.classList.remove("dark"));
+  await block.getByRole("button",{name:"复制代码"}).click();
+  expect(await page.evaluate(()=>navigator.clipboard.readText())).toBe(code);
+  await expect.poll(()=>block.locator("pre").evaluate((element)=>element.scrollWidth>element.clientWidth)).toBe(true);
+  for (const [width,height] of [[1920,1080],[1440,900],[1366,768],[1024,768]]) {
+    await page.setViewportSize({width,height});
+    const gap = await page.locator(".editor-content-wrap").evaluate((paper)=>paper.parentElement!.getBoundingClientRect().bottom-paper.getBoundingClientRect().bottom);
+    expect(gap).toBeGreaterThanOrEqual(14);
+    expect(gap).toBeLessThanOrEqual(24);
+  }
+  await expect.poll(async ()=>{
+    const result = await (await page.request.get(`/api/pages/${note.id}`)).json();
+    return JSON.parse(result.page.content).content[0].attrs?.language;
+  },{timeout:20000}).toBe("python");
+  const print = await page.context().newPage();
+  await print.goto(`/print/page/${note.id}`);
+  expect(await print.locator("pre code").textContent()).toBe(code);
+  await print.close();
+  const editor = page.locator(".notebook-editor");
+  await block.locator("code").click();
+  await page.keyboard.press("End");
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send("Input.imeSetComposition", { text: "中文", selectionStart: 2, selectionEnd: 2 });
+    await cdp.send("Input.insertText", { text: "中文@" });
+    await expect(block.locator("code")).toContainText("中文@");
+    await expect(page.getByRole("listbox", { name: "知识库词条联想" })).toHaveCount(0);
+    await editor.press("Control+z");
+    await expect(block.locator("code")).not.toContainText("中文@");
+    await editor.press("Control+Shift+z");
+    await expect(block.locator("code")).toContainText("中文@");
+  } finally { await cdp.detach(); }
+  await page.keyboard.insertText("\n# long line".repeat(90));
+  await expect.poll(() => page.locator(".editor-content-wrap").evaluate((paper) =>
+    paper.getBoundingClientRect().height > paper.parentElement!.clientHeight
+      && paper.parentElement!.scrollWidth <= paper.parentElement!.clientWidth,
+  )).toBe(true);
+  const {entry} = await (await page.request.post("/api/knowledge",{headers,data:{title:"代码词条",content:{type:"doc",content:[{type:"codeBlock",attrs:{language:"python"},content:[{type:"text",text:code}]}]}}})).json();
+  expect(entry.id).toBeTruthy();
+  await page.goto("/app/library");
+  await page.getByRole("button",{name:"打开词条：代码词条"}).click();
+  const dialog = page.locator(".knowledge-dialog");
+  await expect(dialog.locator(".hljs-keyword").first()).toHaveText("def");
+  await dialog.getByRole("button",{name:"复制代码"}).click();
+  expect(await page.evaluate(()=>navigator.clipboard.readText())).toBe(code);
+  await dialog.getByRole("button",{name:"编辑词条"}).click();
+  await expect(dialog.getByLabel("代码语言")).toHaveValue("python");
 });

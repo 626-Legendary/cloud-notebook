@@ -8,6 +8,8 @@ test("admin user and asset buttons keep icons and text aligned at desktop and mo
   const headers = { Origin: baseURL! };
   expect((await page.request.post("/api/auth/register", { headers, data: { username: `buttons_${Date.now()}`, password: "BrowserTest12345", confirmPassword: "BrowserTest12345" } })).ok()).toBeTruthy();
   expect((await page.request.post("/api/assets/upload", { headers, multipart: { file: { name: "button-preview.png", mimeType: "image/png", buffer: await readFile("tests/fixtures/cover.png") } } })).ok()).toBeTruthy();
+  const managedName = `managed_${Date.now()}`;
+  expect((await page.request.post("/api/auth/register", { headers, data: { username: managedName, password: "BrowserTest12345", confirmPassword: "BrowserTest12345" } })).ok()).toBeTruthy();
   let login = await page.request.post("/api/auth/login", { headers, data: { username: "admin", password } });
   expect(login.ok()).toBeTruthy();
   if ((await login.json()).user.mustChangePassword) {
@@ -43,6 +45,45 @@ test("admin user and asset buttons keep icons and text aligned at desktop and mo
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await page.screenshot({ path: testInfo.outputPath(`admin-${route}-${width}.png`), fullPage: true });
+    }
+    if (route === "users") {
+      const table = page.getByRole("table");
+      await expect(table.getByRole("rowheader").first()).toContainText(/注册于\s+\d{4}/);
+      for (const preset of ["small", "standard", "large"]) {
+        for (const dark of [false, true]) {
+          await page.locator("html").evaluate((html, options) => {
+            html.setAttribute("data-ui-font-size", options.preset);
+            html.classList.toggle("dark", options.dark);
+          }, { preset, dark });
+          await expect(table).toBeVisible();
+          expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        }
+      }
+      const menuTrigger = page.getByRole("button", { name: `${managedName} 更多操作` });
+      await menuTrigger.focus();
+      await page.keyboard.press("Enter");
+      await expect(page.getByRole("menuitem", { name: "修改用户名" })).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(menuTrigger).toBeFocused();
+      await menuTrigger.click();
+      page.once("dialog", (dialog) => dialog.accept("admin"));
+      await page.getByRole("menuitem", { name: "修改用户名" }).click();
+      await expect(page.getByText("该用户名不可用", { exact: true })).toBeVisible();
+      const username = `renamed_${Date.now()}`.padEnd(32, "W");
+      await menuTrigger.click();
+      page.once("dialog", (dialog) => dialog.accept(username));
+      await page.getByRole("menuitem", { name: "修改用户名" }).click();
+      const renamed = page.getByRole("button", { name: `${username} 更多操作` });
+      await expect(renamed).toBeEnabled();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await renamed.click();
+      const download = page.waitForEvent("download");
+      await page.getByRole("menuitem", { name: "导出全部" }).click();
+      expect((await download).suggestedFilename()).toBe(`user-backup-${username}.zip`);
+      await renamed.click();
+      await page.getByRole("menuitem", { name: "重置密码" }).click();
+      await page.getByRole("alertdialog").getByRole("button", { name: "重置密码" }).click();
+      await expect(page.getByText("临时密码（仅展示一次）")).toBeVisible();
     }
     if (route === "assets") {
       await page.getByRole("button", { name: "重新扫描", exact: true }).click();

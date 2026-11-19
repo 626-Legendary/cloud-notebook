@@ -5,11 +5,11 @@ import { isSafeFontFamily, resolveFontFamily } from "@/lib/editor-formatting";
 const safeImagePath = /^\/uploads\/notes\/[0-9a-f-]{36}$/i;
 const safeColor = /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%]+\))$/i;
 
-export function renderDocument(raw: string): React.ReactNode {
+export function renderDocument(raw: string, renderCode?: (text: string, language?: string) => React.ReactNode): React.ReactNode {
   let value: unknown;
   try { value = JSON.parse(raw); } catch { return <p>正文格式无法读取</p>; }
   if (!value || typeof value !== "object") return null;
-  return renderNode(value as DocNode, "root");
+  return renderNode(value as DocNode, "root", renderCode);
 }
 
 type DocNode = {
@@ -20,7 +20,7 @@ type DocNode = {
   marks?: { type: string; attrs?: Record<string, unknown> }[];
 };
 
-function renderNode(node: DocNode, key: React.Key): React.ReactNode {
+function renderNode(node: DocNode, key: React.Key, renderCode?: (text: string, language?: string) => React.ReactNode): React.ReactNode {
   if (node.type === "text") {
     let output: React.ReactNode = node.text ?? "";
     for (const mark of node.marks ?? []) {
@@ -42,7 +42,7 @@ function renderNode(node: DocNode, key: React.Key): React.ReactNode {
     }
     return <React.Fragment key={key}>{output}</React.Fragment>;
   }
-  const children = (node.content ?? []).map((child, index) => renderNode(child, `${String(key)}-${index}`));
+  const children = (node.content ?? []).map((child, index) => renderNode(child, `${String(key)}-${index}`, renderCode));
   switch (node.type) {
     case "knowledgeReference": return <span key={key} className={`knowledge-reference${node.attrs?.unresolved ? " knowledge-reference-invalid" : ""}`} data-knowledge-reference="entry" data-entry-id={String(node.attrs?.entryId ?? "")}>@{String(node.attrs?.label ?? "失效引用")}</span>;
     case "doc": return <>{children}</>;
@@ -57,8 +57,8 @@ function renderNode(node: DocNode, key: React.Key): React.ReactNode {
       const rows = node.content ?? [];
       const header = rows[0]?.content?.length && rows[0].content.every((cell) => cell.type === "tableHeader");
       return <table key={key}>
-        {header ? <thead>{renderNode(rows[0], `${String(key)}-header`)}</thead> : null}
-        <tbody>{rows.slice(header ? 1 : 0).map((row, index) => renderNode(row, `${String(key)}-row-${index}`))}</tbody>
+        {header ? <thead>{renderNode(rows[0], `${String(key)}-header`, renderCode)}</thead> : null}
+        <tbody>{rows.slice(header ? 1 : 0).map((row, index) => renderNode(row, `${String(key)}-row-${index}`, renderCode))}</tbody>
       </table>;
     }
     case "tableRow": return <tr key={key}>{children}</tr>;
@@ -71,7 +71,7 @@ function renderNode(node: DocNode, key: React.Key): React.ReactNode {
     case "orderedList": return <ol key={key}>{children}</ol>;
     case "listItem": return <li key={key}>{children}</li>;
     case "blockquote": return <blockquote key={key}>{children}</blockquote>;
-    case "codeBlock": return <pre key={key}><code>{children}</code></pre>;
+    case "codeBlock": if (renderCode) return <React.Fragment key={key}>{renderCode((node.content ?? []).map((child) => child.text ?? "").join(""), typeof node.attrs?.language === "string" ? node.attrs.language : undefined)}</React.Fragment>; return <pre key={key}><code>{children}</code></pre>;
     case "horizontalRule": return <hr key={key} />;
     case "hardBreak": return <br key={key} />;
     case "image": {

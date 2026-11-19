@@ -55,3 +55,10 @@ tmp
 temp
 *.tmp
 .DS_Store
+
+# Documentation and browser tests are validated outside the production image.
+docs
+tests
+*.md
+playwright.config.ts
+vitest.config.mts

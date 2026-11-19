@@ -75,7 +75,7 @@ docker run --rm --network none \
   docker compose -f docker-compose.e2e.yml up -d --build --wait
   E2E_BASE_URL=http://127.0.0.1:3002 \
   E2E_ALLOW_MUTATIONS=1 \
-  E2E_ADMIN_PASSWORD=V31DisposableAdmin12345 \
+  E2E_ADMIN_PASSWORD=DisposableE2EAdmin12345 \
     npm run test:e2e
 )
 ```

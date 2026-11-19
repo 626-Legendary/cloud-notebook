@@ -1,4 +1,4 @@
-# Cloud Notebook V3.1 执行与验证记录
+# Cloud Notebook 执行与验证记录
 
 日期：2026-10-23（America/Los_Angeles）。本轮为现有项目增量修改。
 

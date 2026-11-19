@@ -887,7 +887,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
               const folder = folders.find((item) => item.id === selectedNotebook?.folderId) ?? folders.find((item) => item.isDefault);
               if (folder) void createNotebook(folder);
               else setError("请先创建文件夹");
-            }}><BookOpen size={15} />新建笔记本</DropdownMenu.Item>
+            }}><NotebookPen size={15} />新建笔记本</DropdownMenu.Item>
           </DropdownMenu.Content></DropdownMenu.Portal>
         </DropdownMenu.Root>
         <div className="section-label workspace-section-label">工作空间</div>
@@ -1066,7 +1066,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
       </section>}
 
       <section className="editor-panel">
-        {(knowledgeOpen || trashOpen) && <header className="editor-topbar workspace-view-topbar"><button className="icon-button mobile-nav-toggle" aria-label="显示文件夹" onClick={() => setShowSidebar(true)}><Folder size={16} /></button><button className="button-subtle" onClick={() => { if (trashOpen) setTrashOpen(false); else setKnowledgeOpen(false); }}><ArrowLeft size={16} />返回笔记本</button></header>}
+        {(knowledgeOpen || trashOpen) && <header className="editor-topbar workspace-view-topbar"><button className="icon-button mobile-nav-toggle" aria-label="显示文件夹" onClick={() => setShowSidebar(true)}><Folder size={16} /></button><button className="button-subtle" onClick={() => { if (trashOpen) setTrashOpen(false); else setKnowledgeOpen(false); }}><ArrowLeft size={16} />返回</button></header>}
         {trashOpen ? (      <div className="trash-workspace">
         <section className="trash-page" aria-labelledby="trash-title">
           <header className="modal-header">
@@ -1127,7 +1127,7 @@ export function Workspace({ appVersion }: { appVersion: string }) {
           onGlobalSearch={openGlobalSearch}
         />}
         </>}
-        <span className="app-version" aria-label="应用版本">v {appVersion}</span>
+        <span className="app-version" aria-label="应用版本">Ver {appVersion}</span>
       </section>
 
       <Dialog.Root open={editingNotebook !== null} onOpenChange={(open) => { if (!open && !coverSavingRef.current) { setEditingNotebook(null); setEditCoverFile(null); setEditCoverPreview(""); } }}>
