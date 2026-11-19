@@ -1174,8 +1174,8 @@ export function Workspace({ appVersion }: { appVersion: string }) {
       {cropFile && <CoverCropDialog file={cropFile} onCancel={() => setCropFile(null)} onConfirm={(file) => { setEditCoverFile(file); setEditCoverPreview(URL.createObjectURL(file)); setCoverRemoved(false); setCropFile(null); }} />}
       {modal === "devices" && <DevicesModal onClose={() => setModal(null)} onLogout={() => void logout()} />}
       {modal === "history" && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setModal(null); }}>
-        <section className="modal-card">
-          <header className="modal-header"><strong>版本历史</strong><div>{snapshots.length > 0 && <button className="button-subtle" onClick={() => void clearHistory()}>清空全部</button>}<button className="icon-button" onClick={() => setModal(null)}><X size={15} /></button></div></header>
+        <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="history-title">
+          <header className="modal-header"><strong id="history-title">版本历史</strong><div>{snapshots.length > 0 && <button className="button-subtle" onClick={() => void clearHistory()}>清空全部</button>}<button className="icon-button" aria-label="关闭版本历史" onClick={() => setModal(null)}><X size={15} /></button></div></header>
           <div className="modal-body">
             {preview && <div className="admin-section" style={{ marginBottom: 14 }}>
               <strong>{preview.title}</strong><pre style={{ whiteSpace: "pre-wrap", maxHeight: 160, overflow: "auto", color: "#888" }}>{plainText(preview.content).slice(0, 1400) || "空白页面"}</pre>

@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test("empty and short paper fill available height without changing versions", async ({ page, baseURL }) => {
+test("empty and short paper fill available height without changing versions", async ({ page, baseURL }, testInfo) => {
   if (process.env.E2E_ALLOW_MUTATIONS !== "1" || baseURL !== "http://127.0.0.1:3002") throw new Error("Disposable server required");
   const headers = { Origin: baseURL };
   const password = "BrowserTest12345";
@@ -15,15 +15,16 @@ test("empty and short paper fill available height without changing versions", as
       await page.locator("html").evaluate((element, value) => element.classList.toggle("dark", value), dark);
       const dimensions = await page.locator(".editor-content-wrap").evaluate((paper) => ({ paper: paper.clientHeight, available: paper.parentElement!.clientHeight, bottom: paper.parentElement!.getBoundingClientRect().bottom - paper.getBoundingClientRect().bottom }));
       expect(dimensions.paper).toBeGreaterThan(dimensions.available - 50);
-      expect(dimensions.bottom).toBeGreaterThanOrEqual(14);
-      expect(dimensions.bottom).toBeLessThanOrEqual(24);
+      expect(dimensions.bottom).toBeCloseTo(24, 0);
+      const viewportGap = await page.locator(".editor-content-wrap").evaluate((paper) => innerHeight - paper.getBoundingClientRect().bottom);
+      expect(viewportGap).toBeCloseTo(24, 0);
+      if (width === 2560 && !dark) await page.screenshot({ path: testInfo.outputPath("empty-paper-2560.png") });
     }
   }
   expect((await (await page.request.get(`/api/pages/${note.id}`)).json()).page.version).toBe(note.version);
   await page.locator(".notebook-editor").fill("这是一段短正文。");
   const bottom = await page.locator(".editor-content-wrap").evaluate((paper) => paper.parentElement!.getBoundingClientRect().bottom - paper.getBoundingClientRect().bottom);
-  expect(bottom).toBeGreaterThanOrEqual(14);
-  expect(bottom).toBeLessThanOrEqual(24);
+  expect(bottom).toBeCloseTo(24, 0);
 });
 
 test("page panel resizing preserves editing, persists width and shares edge scrollbars and hierarchy", async ({ page, baseURL }, testInfo) => {
@@ -155,8 +156,7 @@ test("code language and copy preserve source while paper fills the viewport", as
   for (const [width,height] of [[1920,1080],[1440,900],[1366,768],[1024,768]]) {
     await page.setViewportSize({width,height});
     const gap = await page.locator(".editor-content-wrap").evaluate((paper)=>paper.parentElement!.getBoundingClientRect().bottom-paper.getBoundingClientRect().bottom);
-    expect(gap).toBeGreaterThanOrEqual(14);
-    expect(gap).toBeLessThanOrEqual(24);
+    expect(gap).toBeCloseTo(24, 0);
   }
   await expect.poll(async ()=>{
     const result = await (await page.request.get(`/api/pages/${note.id}`)).json();
