@@ -52,7 +52,7 @@ Cloud Notebook 是基于 Next.js App Router 的自托管云笔记应用。
 - 外部输入先视为 unknown，使用 Zod 或显式类型收窄。
 - 不以 any、ts-ignore 或关闭 ESLint 规则代替修复。
 - 数据库类型优先使用 Drizzle 推导类型，客户端仅传递必要字段。
-- 新增图标使用 lucide-react，复用已有组件与尺寸约定。
+- 新增图标使用锁定的 lucide-react 1.22.0，复用已有组件与尺寸约定。
 - 用户可见文案使用中文，图标按钮提供 accessible name。
 - UI 字号统一使用 text-ui-caption/secondary/body/heading/title 或对应 --ui-* 变量；唯一尺寸表为 src/app/typography.css，不新增任意 UI 字号、不覆盖 text-sm 等通用工具类。
 - UI 偏好与文档排版独立，正文、标题和打印字号不能引用 UI token。详细边界见 docs/UI_TYPOGRAPHY.md。
@@ -112,6 +112,7 @@ Cloud Notebook 是基于 Next.js App Router 的自托管云笔记应用。
 - 修复必须校验来源归属、版本、精确节点路径及原目标；新建目标与修复在同一事务中，不能按相同文字批量替换。
 - 标签功能已移除，禁止重新引入入口、API 或关联读写；遗留表和已发布迁移保留，不擅自删除已有数据。CNF2／用户 ZIP2 的标签字段仅保留兼容读取，新导出为空。
 - 新增知识库图片同样参与资产清理和跨账号删除保护；管理员用户 ZIP 格式 2 必须包括知识库和引用 ID 映射，原用户 ZIP1 的恢复与 CNF2 格式政策独立。
+- 知识库列表新建后直接编辑；保存保留编辑状态，阅读切换须先保存。详情不维护上一词条返回栈。知识库、联想和检查面板遵循 docs/UI_TYPOGRAPHY.md 的角色字号，不得改变文档字号。
 - 知识库入口为 /app/library，复用 Workspace 及认证；页内模态框继续承担词条详情。导入冲突计划器由 CNF 和管理员恢复共用，事务内复核名称及 ID 映射。
 - 模块职责和升级／回滚边界见 docs/KNOWLEDGE_BASE.md。
 

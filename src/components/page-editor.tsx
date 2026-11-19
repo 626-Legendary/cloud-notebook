@@ -656,6 +656,31 @@ export function PageEditor({
             <button className="toolbar-button" aria-label="重做" title="重做" onMouseDown={preserveSelection} onClick={() => applyAtSelection((active) => active.chain().redo().run())}><Redo2 size={16} /></button>
           </div>
           <span className="toolbar-divider" />
+          <div className="toolbar-search">
+          <Popover open={findOpen} onOpenChange={(open) => { if (open) setFindOpen(true); else closePageFind(); }}>
+            <PopoverTrigger asChild><button className={`toolbar-button ${findOpen ? "active" : ""}`} type="button" aria-label={resourceType === "entry" ? "搜索当前词条" : "搜索当前页面"} title={resourceType === "entry" ? "搜索当前词条 (Ctrl/Cmd+F)" : "搜索当前页面 (Ctrl/Cmd+F)"} aria-keyshortcuts="Control+f Meta+f"><Search size={16} /></button></PopoverTrigger>
+              <PopoverContent side="bottom" align="start" className="page-find-bar" onOpenAutoFocus={(event) => { event.preventDefault(); findInputRef.current?.focus(); }}>
+          <input
+            ref={findInputRef}
+            type="search"
+            value={findQuery}
+            placeholder={resourceType === "entry" ? "搜索当前词条..." : "搜索当前页面..."}
+            aria-label={resourceType === "entry" ? "搜索当前词条正文" : "搜索当前页面正文"}
+            onChange={(event) => { setFindQuery(event.target.value); setActiveFindMatch(0); }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") { event.preventDefault(); closePageFind(); }
+              if (event.key === "Enter") { event.preventDefault(); navigateFindMatch(event.shiftKey ? -1 : 1); }
+            }}
+          />
+          <span className="page-find-count">{findMatches.length ? `${Math.min(activeFindMatch + 1, findMatches.length)} / ${findMatches.length}` : "0 / 0"}</span>
+          <button className="icon-button" type="button" title="上一个匹配项" aria-label="上一个匹配项" disabled={!findMatches.length} onClick={() => navigateFindMatch(-1)}><ChevronUp size={16} /></button>
+          <button className="icon-button" type="button" title="下一个匹配项" aria-label="下一个匹配项" disabled={!findMatches.length} onClick={() => navigateFindMatch(1)}><ChevronDown size={16} /></button>
+          {findQuery && <button className="icon-button" type="button" title="清除搜索" aria-label="清除搜索" onClick={() => { setFindQuery(""); setActiveFindMatch(0); findInputRef.current?.focus(); }}><Eraser size={15} /></button>}
+          <button className="icon-button" type="button" title="关闭搜索" aria-label="关闭搜索" onClick={closePageFind}><X size={15} /></button>
+              </PopoverContent>
+          </Popover>
+          </div>
+          <span className="toolbar-divider" />
           <div className="toolbar-group" aria-label="文字样式">
             <select aria-label="标题样式" title="段落样式" value={editor.isActive("heading", { level: 1 }) ? "h1" : editor.isActive("heading", { level: 2 }) ? "h2" : editor.isActive("heading", { level: 3 }) ? "h3" : "p"} onPointerDown={rememberSelection} onChange={(event) => applyAtSelection((active) => event.target.value === "h1" ? active.chain().toggleHeading({ level: 1 }).run() : event.target.value === "h2" ? active.chain().toggleHeading({ level: 2 }).run() : event.target.value === "h3" ? active.chain().toggleHeading({ level: 3 }).run() : active.chain().setParagraph().run())}>
               <option value="p">正文</option><option value="h1">标题 1</option><option value="h2">标题 2</option><option value="h3">标题 3</option>
@@ -768,30 +793,6 @@ export function PageEditor({
             </div>
             <span className="toolbar-divider" />
           </>}
-          </div>
-          <div className="toolbar-search">
-          <Popover open={findOpen} onOpenChange={(open) => { if (open) setFindOpen(true); else closePageFind(); }}>
-            <PopoverTrigger asChild><button className={`toolbar-button ${findOpen ? "active" : ""}`} type="button" aria-label={resourceType === "entry" ? "搜索当前词条" : "搜索当前页面"} title={resourceType === "entry" ? "搜索当前词条 (Ctrl/Cmd+F)" : "搜索当前页面 (Ctrl/Cmd+F)"} aria-keyshortcuts="Control+f Meta+f"><Search size={16} /></button></PopoverTrigger>
-              <PopoverContent side="bottom" align="end" className="page-find-bar" onOpenAutoFocus={(event) => { event.preventDefault(); findInputRef.current?.focus(); }}>
-          <input
-            ref={findInputRef}
-            type="search"
-            value={findQuery}
-            placeholder={resourceType === "entry" ? "搜索当前词条..." : "搜索当前页面..."}
-            aria-label={resourceType === "entry" ? "搜索当前词条正文" : "搜索当前页面正文"}
-            onChange={(event) => { setFindQuery(event.target.value); setActiveFindMatch(0); }}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") { event.preventDefault(); closePageFind(); }
-              if (event.key === "Enter") { event.preventDefault(); navigateFindMatch(event.shiftKey ? -1 : 1); }
-            }}
-          />
-          <span className="page-find-count">{findMatches.length ? `${Math.min(activeFindMatch + 1, findMatches.length)} / ${findMatches.length}` : "0 / 0"}</span>
-          <button className="icon-button" type="button" title="上一个匹配项" aria-label="上一个匹配项" disabled={!findMatches.length} onClick={() => navigateFindMatch(-1)}><ChevronUp size={16} /></button>
-          <button className="icon-button" type="button" title="下一个匹配项" aria-label="下一个匹配项" disabled={!findMatches.length} onClick={() => navigateFindMatch(1)}><ChevronDown size={16} /></button>
-          {findQuery && <button className="icon-button" type="button" title="清除搜索" aria-label="清除搜索" onClick={() => { setFindQuery(""); setActiveFindMatch(0); findInputRef.current?.focus(); }}><Eraser size={15} /></button>}
-          <button className="icon-button" type="button" title="关闭搜索" aria-label="关闭搜索" onClick={closePageFind}><X size={15} /></button>
-              </PopoverContent>
-          </Popover>
           </div>
         </div>
         {imageSelected && <div className="toolbar-row image-toolbar" aria-label="图片布局">

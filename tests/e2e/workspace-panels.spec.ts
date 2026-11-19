@@ -45,8 +45,10 @@ test("page panel resizing preserves editing, persists width and shares edge scro
   expect((await page.locator(".workspace-new-button").boundingBox())!.y - divider.y - divider.height).toBeGreaterThanOrEqual(16);
   await expect(page.locator(".brand-small img")).toHaveAttribute("src", "/icon.png");
   const search = page.getByRole("button", { name: "搜索当前页面", exact: true });
-  expect(await search.evaluate((element) => element.parentElement === document.querySelector(".toolbar-row > .toolbar-search"))).toBe(true);
-  expect(await page.locator(".toolbar-row").first().evaluate((element) => element.lastElementChild?.classList.contains("toolbar-search"))).toBe(true);
+  expect(await search.evaluate((element) => element.parentElement === document.querySelector(".toolbar-formatting > .toolbar-search"))).toBe(true);
+  const undo = (await page.getByRole("button", { name: "重做", exact: true }).boundingBox())!;
+  expect((await search.boundingBox())!.x).toBeGreaterThan(undo.x + undo.width);
+  expect((await search.boundingBox())!.x - undo.x - undo.width).toBeLessThan(50);
   expect(Math.abs((await search.boundingBox())!.y - (await page.locator(".formatting-toolbar").boundingBox())!.y)).toBeLessThanOrEqual(2);
   await search.click(); await expect(page.getByRole("searchbox", { name: "搜索当前页面正文" })).toBeFocused();
   await page.keyboard.press("Escape");
