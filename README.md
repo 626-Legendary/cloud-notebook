@@ -2,7 +2,7 @@
 
 面向个人学习与知识管理的自托管笔记应用。使用 SQLite 和本地附件目录保存数据，提供文件夹、笔记本、富文本页面、多用户隔离、历史快照、垃圾箱和管理员备份功能。
 
-当前软件包版本：`1.1.1118`。界面右下角的显示版本可通过 `APP_VERSION` 配置。版本更新内容见 [版本更迭记录](CHANGELOG.md)。
+软件包版本以 [`package.json`](package.json) 为准（当前开发基线 `1.1.1118`）。界面右下角的显示版本可通过 `APP_VERSION` 配置。版本更新内容见 [版本更迭记录](CHANGELOG.md)。
 
 1.1.1118 新增独立个人知识库、`@` 结构化引用、反向引用和手动检查／精确修复。词条复用现有富文本编辑器，详见 [知识库说明](docs/KNOWLEDGE_BASE.md)。已有编辑器空闲性能约束继续保留。
 
@@ -21,6 +21,7 @@
 - [检查与浏览器测试](#检查与浏览器测试)
 - [项目结构](#项目结构)
 - [常见问题](#常见问题)
+- [开发规范与文档导航](#开发规范与文档导航)
 
 ## 主要功能
 
@@ -71,7 +72,7 @@
 以下步骤适用于首次初始化；已有 `.env` 时直接检查和补充配置，不要覆盖。
 
 ```bash
-cp .env.example .env
+cp -n .env.example .env
 npm ci
 ```
 
@@ -149,7 +150,7 @@ docker compose down
 首次准备配置：
 
 ```bash
-cp .env.test.example .env.test
+cp -n .env.test.example .env.test
 ```
 
 将 `.env.test` 中的 `JWT_SECRET` 和 `ADMIN_INITIAL_PASSWORD` 替换为独立的测试值。示例管理员名为 `admin-test`，默认关闭普通用户注册；需要测试注册时，可由管理员在后台开启。
@@ -206,7 +207,7 @@ docker compose --env-file .env.test -p cloud-notebook-test -f docker-compose.tes
 ### 导航、封面与搜索
 
 - 按“文件夹 → 笔记本 → 页面”组织内容；页面可手动排序，或按更新时间、创建时间、标题排序。
-- 笔记本“重命名”和“编辑封面”分开；封面对话框支持上传、更换和移除封面。
+- 笔记本“重命名”和“编辑封面”分开；封面对话框支持上传、更换和移除封面。封面共用 `CoverCropDialog`，固定比例 `16 / 8.6`，支持拖动、方向键和 1～4 倍缩放；确认裁剪生成 1600×860 WebP（不支持时为 PNG），点击保存或创建后才上传。取消不替换原封面，GIF 提示转为静态；裁剪前最多 10 MiB、4000 万像素且单边不超过 20,000px。
 - 置顶笔记本和页面可从侧栏快速打开，条目菜单提供“取消置顶”。
 - 页面 ID 写入 `/app?page=…`，刷新后会检查访问权限并恢复页面；无效或不可访问的页面回到工作台。
 - 首次恢复显示简洁的同步加载动画；面包屑超过 60 个字符显示 `...`，悬停可查看完整标题。
@@ -215,9 +216,9 @@ docker compose --env-file .env.test -p cloud-notebook-test -f docker-compose.tes
 
 ### 编辑、保存与版本冲突
 
-主工具栏提供精确字号，选区 BubbleMenu 提供 A−/A+。H1/H2/H3 有独立字号和字重层级，手动设置的字号优先。深色模式降低高亮背景强度，原始颜色仍保留在保存数据和打印输出中。
+主工具栏提供精确字号，选区 BubbleMenu 提供 A−/A+。H1/H2/H3 有独立字号和字重层级，手动设置的字号优先。深色模式降低高亮背景强度，原始颜色仍保留在保存数据和打印输出中。表格列上限由 `TableMap` 逻辑宽度计算为 20，按钮、命令与事务层同时限制；已有超限表格仍可读取和删列，不允许继续扩大。
 
-“账号与设置”的自动保存菜单提供：
+“账号与设置”的默认文案固定为“实时保存”，不附带时间标记；内部 `realtime` 配置对应以下间隔：
 
 | 选项 | 保存间隔 |
 | --- | --- |
@@ -239,6 +240,8 @@ docker compose --env-file .env.test -p cloud-notebook-test -f docker-compose.tes
 
 删除页面或笔记本后进入垃圾箱，通常可在 7 天保留期内恢复。垃圾箱位于主工作区，支持搜索、类型筛选、恢复和永久删除；超过保留期的内容由后台定期清理。
 
+界面字号可选择紧凑、标准、大号，保存到账号并在刷新时恢复；管理员入口为“系统设置 → 界面显示”。只改变界面，不改变正文和 PDF。实现边界见 [字体规范](docs/UI_TYPOGRAPHY.md)。
+
 账号与设置使用分组菜单展示外观、保存频率和账号信息。“登录设备”打开独立对话框，支持退出某个设备或退出其他设备；当前设备使用绿色文字标示。
 
 ### 工作区布局与图片记录
@@ -246,7 +249,7 @@ docker compose --env-file .env.test -p cloud-notebook-test -f docker-compose.tes
 - 页面列表面板在桌面端可拖动右侧边界，从默认／最小 300px 拉宽至 450px；支持左右方向键（10px）、Shift＋方向键（25px）、Home／End、双击恢复默认。宽度保存在当前浏览器，刷新后恢复；移动端继续使用原有抽屉宽度。
 - 默认文件夹与普通文件夹都显示为父级，其下笔记本统一缩进；新建按钮与上方分隔保留间距。
 - 侧栏、长置顶列表与页面列表共用滚动条样式，滚动条贴右缘，内容保留内边距，继续支持操作时显示和空闲隐藏。
-- 当前页搜索位于工具栏最右侧，快捷键 Ctrl/Cmd+F 不变；左上品牌使用现有站点图标。
+- 当前页搜索位于撤销／重做旁，快捷键与作用域见 [快捷键规范](docs/KEYBOARD_SHORTCUTS.md)；左上品牌使用现有站点图标。
 - 管理后台“图片记录”统一显示存储 UUID 的前 8 位，悬停查看完整存储文件名；原始文件名元数据仍保留用于备份兼容，磁盘文件继续使用完整 UUID。
 
 ## 字体与导出
@@ -267,7 +270,7 @@ Google 字体通过 `next/font/google` 在构建时获取，粉圆体使用 `nex
 
 ### CNF、Markdown 编辑与 PDF
 
-从 /app 首页或知识库导入 .cnf，在笔记本菜单、页面导出框或知识库分别导出。CNF2 保留正文 JSON、封面、本地图片和结构化引用；页面／笔记本只打包直接引用的词条，独立知识库导出包含全部词条。名称冲突时列出冲突项，可取消、复用已有词条或保留双方并重命名，不覆盖已有正文。旧版 CNF 不再支持。文件结构、版本、资源校验与边界见 [CNF 格式说明](docs/CNF_FORMAT.md)。
+从 /app 首页或知识库导入 .cnf，在笔记本菜单、页面导出框或知识库分别导出。CNF2 保留正文 JSON、封面、本地图片和结构化引用；页面／笔记本只打包直接引用的词条，独立知识库导出包含全部词条。名称冲突时列出冲突项，可取消、复用已有词条或保留双方并重命名，不覆盖已有正文。当前仅接收格式版本 2；项目尚未正式上线，不要求兼容未发布的旧 `.cnf`，也不为改名重构现有格式。文件结构、版本、资源校验与边界见 [CNF 格式说明](docs/CNF_FORMAT.md)。
 
 保留 Markdown 快捷输入、粘贴和中文表格识别，工具栏已移除 Markdown 文件导入／导出；不提供 Markdown 源码编辑模式。已有 Inline Code 标记继续兼容，新建入口已移除，代码块保留。
 
@@ -328,59 +331,16 @@ npm run admin:reset-password
 
 ## 检查与浏览器测试
 
-### 静态检查、单元测试与构建
+验证命令、一次性 3002 环境、浏览器准备、专项选择和失败清理由 [tests/README.md](tests/README.md) 统一维护。自动化写入不能指向正式数据或 3001 持久化验收卷；启动、构建及迁移可能写库，应使用隔离配置。
 
-```bash
-npm run typecheck
-npm run lint
-npm test
-npm run build
-```
-
-`npm run db:migrate` 会修改所配置的数据库；它不是只读检查。执行测试或构建验证时应使用隔离环境。Docker builder 已使用临时数据库路径，不读取生产 `./data`。
-
-### 独立 E2E 测试
-
-建议使用专门的 3002 环境，避免浏览器脚本修改常规测试卷中的验收数据：
-
-```bash
-npm ci
-docker compose -f docker-compose.e2e.yml up -d --build --wait
-
-E2E_BASE_URL=http://127.0.0.1:3002 \
-E2E_ALLOW_MUTATIONS=1 \
-E2E_ADMIN_PASSWORD=V31DisposableAdmin12345 \
-npm run test:e2e
-
-docker compose -f docker-compose.e2e.yml down
-```
-
-E2E 配置使用独立 Compose 项目 `cloud-notebook-e2e`，不挂载正式目录或 3001 测试卷。固定密钥和管理员凭证仅用于此可丢弃环境，数据在 tmpfs 中，停止或重建容器后会丢失。
-
-测试默认使用 `/usr/bin/chromium`，可通过 `CHROMIUM_PATH` 指定其他 Chromium 可执行文件。浏览器与服务需处于相互可达的网络；如果浏览器在另一台机器或容器，其 `localhost` 不代表应用宿主机。
-
-脚本写操作要求 `E2E_ALLOW_MUTATIONS=1`，且目标端口为 3001 或 3002；这只是保护条件，运行前仍需确认目标确实为可丢弃的测试环境。
-
-针对某个场景可使用：
-
-```bash
-# 保存竞争、加载状态、字体与版本号
-E2E_ALLOW_MUTATIONS=1 E2E_ADMIN_PASSWORD=V31DisposableAdmin12345 npm run test:e2e -- tests/e2e/save-lifecycle.spec.ts
-
-# 后台用户与图片存储页的按钮布局
-E2E_ALLOW_MUTATIONS=1 E2E_ADMIN_PASSWORD=V31DisposableAdmin12345 npm run test:e2e -- tests/e2e/admin-buttons.spec.ts
-```
-
-定向命令默认连接 3002；如需更换地址，另外设置 `E2E_BASE_URL`。测试截图、字体报告、PDF 和失败追踪写入 `test-results/`；目录被 Git 忽略，重新测试会替换已有产物。
-
-历史实现、实际验证结果及尚未覆盖的项目见 [PROGRESS.md](PROGRESS.md)。本文提供运行方法，不将历史测试通过记录视为任意环境下的验证保证。
+当前功能以源码和专项规范为准，[CHANGELOG](CHANGELOG.md) 记录版本变化，`PROGRESS.md` 是历史执行记录。历史测试结果不代表本次已重新验证。
 
 ## 项目结构
 
 ```text
 src/
 ├── app/                  # App Router 页面、API、打印页与全局样式
-│   ├── admin/            # 用户、存储清理、备份与设置
+│   ├── admin/            # 用户、知识库查询、存储清理、备份与设置
 │   ├── app/              # 笔记本卡片首页、编辑工作台与加载页
 │   └── print/            # 单页与整本打印预览
 ├── components/           # 编辑器、工作台、账号及基础 UI
@@ -422,13 +382,18 @@ tests/                    # unit / integration / e2e / fixtures，详见 tests/R
 先确认健康检查和日志，再检查浏览器是否运行在同一主机。测试端口只绑定回环地址；远程浏览器需要可达的测试网络地址，不能把远端 `localhost` 当作应用地址。
 
 
-## 界面字号
+## 开发规范与文档导航
 
-在“账号与设置 → 界面字号”中选择紧凑、标准或大号。管理员在“系统设置 → 界面显示”调整。设置保存在账号中，刷新恢复；只改变界面文字，笔记正文和 PDF 字号保持独立。
+开发从 [AGENTS.md](AGENTS.md) 开始，按任务读取专项：
 
-维护规则、字号表与例外见 [界面字体系统](docs/UI_TYPOGRAPHY.md)。本次新增数据库迁移 `0005_ui_typography.sql`，升级时会为旧账号增加默认标准字号，不改写笔记内容。
+| 文档 | 职责 |
+| --- | --- |
+| [UI/UX 主规范](docs/UI_DESIGN_SYSTEM.md) | 品牌、语义颜色、组件、布局、交互与响应式 |
+| [字体专项](docs/UI_TYPOGRAPHY.md) | UI 字号、偏好、字体与正文／打印边界 |
+| [知识库规范](docs/KNOWLEDGE_BASE.md) | 词条、引用、反向来源与精确修复 |
+| [CNF 格式](docs/CNF_FORMAT.md) | `.cnf` 结构、校验、冲突与开发阶段演进 |
+| [快捷键与退出](docs/KEYBOARD_SHORTCUTS.md) | 修饰键、作用域及会话退出流程 |
+| [测试说明](tests/README.md) | 验证命令、隔离环境和测试选择 |
+| [版本记录](CHANGELOG.md) | 版本变化与当时验证摘要 |
 
-
-快捷键及退出交互说明见 [快捷键约定](docs/KEYBOARD_SHORTCUTS.md)。
-
-测试目录分类、业务命名与单文件运行方法见 [tests/README.md](tests/README.md)。
+[空闲性能审计](docs/MEMORY_AUDIT.md) 和 [上传前检查](docs/REPOSITORY_PUBLISHING.md) 分别保留性能根因、提交前检查方法；其中标注日期的历史结果不是当前状态保证。被 Git 忽略的 `Command.md` 是本地运维便笺，不作为共享规范维护。

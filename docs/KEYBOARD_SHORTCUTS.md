@@ -12,12 +12,12 @@
 
 参考 [Tiptap 链接扩展的 Mod-K 建议](https://tiptap.dev/docs/editor/extensions/marks/link) 与 [VS Code 的跨文件搜索约定](https://code.visualstudio.com/docs/reference/default-keybindings)。
 
-旧全局 Ctrl/Cmd+Shift+K 与未检查 Shift 的链接监听会同时命中，现已移除这个冲突组合。
+不得重新引入同时命中搜索与链接的旧组合 Ctrl/Cmd+Shift+K。
 匹配逻辑集中在 `src/lib/keyboard-shortcuts.ts`：精确匹配 Shift，忽略 Alt、同时按 Ctrl 与 Cmd、输入法组合及已处理的事件。正文以外的浏览器快捷键不被链接命令抢占。
 
 ## 退出登录
 
-普通用户与管理员共用 `useLogout`：
+普通用户与管理员共用 `useLogout`；全局认证约束见 [AGENTS](../AGENTS.md)。退出顺序如下：
 
 1. 立即显示等待界面并限制重复操作；使用已有 Radix 模态焦点管理，防止等待期间继续编辑。
 2. 普通用户先通过现有 flush 队列确认正文已保存；有错误或版本冲突时保留草稿并取消退出。
@@ -26,5 +26,4 @@
 5. 退出请求超时或响应不明确时，使用不缓存的 `/api/auth/me` 核实状态。仅服务器明确返回 401 时视为已退出；仍登录或无法确认时显示错误并允许重试。
 6. 服务端撤销失败返回 503，保留原会话 Cookie 以便重试，不静默宣称成功。
 
-已验证慢响应、失败重试、旧 Cookie 重放失效、刷新保持退出、退出前保存以及版本冲突阻止退出。
-实际部署的网络或数据库性能仍需结合服务端日志判断，本次没有将“响应慢”的具体原因假定为数据库或代理故障。
+回归入口为 `tests/unit/keyboard-shortcuts.test.ts`、`tests/unit/logout-client.test.ts` 和 `tests/e2e/keyboard-logout-layout.spec.ts`，运行与隔离步骤见 [测试说明](../tests/README.md)。真实部署延迟仍需结合服务端日志判断，不能从历史修复推定为数据库或代理故障。

@@ -1,56 +1,56 @@
-# 测试目录
+# 验证与隔离测试
 
-按测试层级和业务能力组织，不用发布版本号命名文件。
+本文件统一维护验证命令、环境边界和测试选择。安装与部署见 [README](../README.md)，开发约束见 [AGENTS](../AGENTS.md)。命令均从仓库根目录运行；历史执行结果以 [CHANGELOG](../CHANGELOG.md) 为准，不能视为本次已通过。
 
-- `unit/`：纯逻辑及模拟请求测试，使用 Vitest。
-- `integration/`：隔离 SQLite、迁移及临时文件系统测试，使用 Vitest。
-- `e2e/`：浏览器与 HTTP 业务回归，使用 Playwright。
-- `fixtures/`：上传等测试使用的静态夹具。
+## 1. 测试目录
 
-浏览器测试按能力命名，例如 `editor-workspace`（编辑、搜索、打印及恢复）、`notebook-sort-cover`（排序和封面）、`editor-navigation-notifications`（导航和通知）、`keyboard-logout-layout`（快捷键及退出）、`sidebar-scrolling`（列表滚动）。新测试优先加入相应业务文件；跨功能主流程保留在工作区测试中，不为新版本复制整套测试。
+| 目录 | 工具与职责 |
+| --- | --- |
+| `unit/*.test.ts` | Vitest：纯逻辑、保存协调与模拟请求 |
+| `integration/*.test.ts` | Vitest：隔离 SQLite、迁移及临时文件系统 |
+| `e2e/*.spec.ts` | Playwright：真实 Chromium 和 HTTP 业务回归 |
+| `fixtures/` | 静态上传夹具，不使用真实账号或运行数据 |
 
-在项目根目录运行全部 Vitest 测试：
+文件按业务能力命名，优先扩充现有业务文件，不为版本复制测试。不得删关键断言或跳过权限／冲突来让检查通过。
+
+## 2. 环境边界
+
+| 环境 | 端口 | 数据 | 自动化写入 |
+| --- | --- | --- | --- |
+| 正式配置 | 3000 | 宿主 `./data` | 禁止 |
+| 持久化验收 | 3001 | `cloud-notebook-test-data` 卷 | 禁止使用现有验收卷 |
+| 一次性 E2E | 3002 | 独立项目 `cloud-notebook-e2e`，`/app/data` tmpfs | 仅限本次创建的服务 |
+
+- 不通过修改测试地址把写入指向正式或持久化验收环境。部分旧脚本只检查端口，这不是数据隔离证明。
+- 一次性配置 [`docker-compose.e2e.yml`](../docker-compose.e2e.yml) 不挂载正式目录或测试卷；固定凭据仅用于此环境，不能复用于真实实例。
+- 停止／重建一次性容器会丢失数据。开始前确认没有其他任务占用该项目，结束时无论成功失败都清理本次服务。
+- `dev`、`start`、`build` 可能通过启动钩子初始化／迁移数据库；`db:migrate` 明确写入目标数据库，不是检查命令。
+- 构建验证优先使用 Dockerfile 的临时数据库；本地构建不得连接真实数据库。
+
+## 3. 类型、Lint 与 Vitest
+
+依赖安装使用 `npm ci`，不要为了验证升级锁文件。需要支持项目的 Node.js（要求见 README）；better-sqlite3 原生模块必须与当前 Node ABI 匹配。
 
 ```bash
+npm run typecheck
+npm run lint
 npm test
 ```
 
-运行单个文件：
+定向执行：
 
 ```bash
 npm test -- tests/unit/keyboard-shortcuts.test.ts
+npm test -- tests/integration/cnf-round-trip.test.ts
 ```
 
-浏览器测试仅使用一次性 3002 环境，禁止指向真实数据：
+集成测试应自行建立内存数据库／临时目录并清理。切换 Node 后若原生模块不匹配，应使用匹配环境安装依赖或执行下方容器验证，不能跳过相关测试。
+
+### 隔离容器执行 Vitest
+
+下面使用项目 Dockerfile 的 dependencies 阶段，镜像与测试均不挂载真实 `data` 或环境文件；锁文件变化后重新构建依赖镜像。
 
 ```bash
-docker compose -f docker-compose.e2e.yml up -d --build --wait
-E2E_BASE_URL=http://127.0.0.1:3002 E2E_ALLOW_MUTATIONS=1 npm run test:e2e -- tests/e2e/sidebar-scrolling.spec.ts
-docker compose -f docker-compose.e2e.yml down
-```
-
-包含后台登录的测试还需设置一次性环境的 `E2E_ADMIN_PASSWORD`。无论成功或失败都清理本次创建的服务；详细边界见根目录 AGENTS.md。
-
-## v1.0.1110 原生笔记本专项
-
-```bash
-npm test -- tests/integration/cnf-round-trip.test.ts tests/unit/table-limit.test.ts
-
-docker compose -f docker-compose.e2e.yml up -d --build --wait
-E2E_BASE_URL=http://127.0.0.1:3002 E2E_ALLOW_MUTATIONS=1 npm run test:e2e -- tests/e2e/native-notebook-transfer.spec.ts tests/e2e/notebook-home-crop.spec.ts tests/e2e/table-columns.spec.ts
-docker compose -f docker-compose.e2e.yml down
-```
-
-新增校验覆盖完整 CNF 往返、资源去重和归属、失败回滚、损坏与不支持格式、封面裁剪取消、首页导航及 19／20 列（包含合并单元格、命令和事务）。格式及限制见 ../docs/CNF_FORMAT.md。
-
-## v1.0.1110 本轮实际验证命令
-
-宿主检查使用可用 Node.js（无安装或改写宿主依赖）；SQLite 测试使用与服务相同的 Node20 容器，避免原生模块 ABI 差异。以下为实际命令主体，在项目根目录执行；宿主需将 Node 加入 PATH。
-
-```bash
-node node_modules/typescript/bin/tsc --noEmit
-node node_modules/eslint/bin/eslint.js src
-
 docker build --target dependencies -t cloud-notebook:validation-deps .
 docker run --rm --network none \
   -v "$PWD/tests:/app/tests:ro" \
@@ -58,118 +58,69 @@ docker run --rm --network none \
   -v "$PWD/drizzle:/app/drizzle:ro" \
   -v "$PWD/vitest.config.mts:/app/vitest.config.mts:ro" \
   cloud-notebook:validation-deps node node_modules/vitest/vitest.mjs run
+```
 
-docker build -t cloud-notebook:v3.1-test .
-docker compose -f docker-compose.e2e.yml up -d --force-recreate --wait
-E2E_ALLOW_MUTATIONS=1 E2E_ADMIN_PASSWORD=V31DisposableAdmin12345 \
-  node node_modules/@playwright/test/cli.js test --output=test-results/native-final
+此命令只验证 Vitest；不等于完成浏览器、生产构建、备份恢复或断电验证。
+
+## 4. 浏览器与 HTTP 回归
+
+主机需安装项目依赖与 Chromium，默认路径 `/usr/bin/chromium`；不同路径通过 `CHROMIUM_PATH` 指定。服务端运行在容器，Playwright 运行在主机。
+
+确认一次性项目当前未被使用后，复制整个 Bash 块执行。子 Shell 的 EXIT trap 保证启动或测试失败后也执行清理，不改变调用者 Shell 的 trap。
+
+```bash
+(
+  set -e
+  trap 'docker compose -f docker-compose.e2e.yml down' EXIT
+  docker compose -f docker-compose.e2e.yml up -d --build --wait
+  E2E_BASE_URL=http://127.0.0.1:3002 \
+  E2E_ALLOW_MUTATIONS=1 \
+  E2E_ADMIN_PASSWORD=V31DisposableAdmin12345 \
+    npm run test:e2e
+)
+```
+
+- 该命令同时验证生产镜像构建。固定管理员口令与 Compose 一致，仅适用于一次性环境。
+- 要定向运行，将块中的 `npm run test:e2e` 换为 `npm run test:e2e -- tests/e2e/knowledge-input-admin.spec.ts` 等命令，保留环境变量及清理逻辑。
+- 不并行启动多个针对同一实例的浏览器套件，后台设置／会话等全局操作可能互相影响。
+- 端口和 `E2E_ALLOW_MUTATIONS` 只是防误操作；实际安全依赖独立数据库、tmpfs 和资源路径。
+- 产物写入被 Git 忽略的 `test-results/`，包括截图、PDF、字体报告和失败追踪；需要保留时先复制，后续执行可能覆盖。
+
+仅检查生产镜像、无需启动浏览器时：
+
+```bash
+docker compose -f docker-compose.e2e.yml build
+```
+
+如前一次操作中断留下服务，在确认属于自己的测试后清理：
+
+```bash
 docker compose -f docker-compose.e2e.yml down
 ```
 
-本轮单元／集成测试：21 个文件、71 项通过。类型检查、ESLint、生产构建及完整 26 项 Chromium 回归通过；随后首页按钮对齐修正的两项专项复验和双色图片裁剪像素单项复验通过。结果记录至 CHANGELOG.md。
+## 5. 根据变更选择专项
 
-依赖保持原锁定版本；本次依赖镜像安装报告既有 npm audit 告警（11 moderate、1 high），未执行自动升级或 audit fix。Safari、Firefox、真实触屏设备与断电恢复未验证。
+| 变更领域 | 优先检查 |
+| --- | --- |
+| 保存、版本、草稿 | `unit/save-coordination.test.ts`、`e2e/save-lifecycle.spec.ts` |
+| 编辑器空闲／实例生命周期 | `e2e/editor-idle.spec.ts`；原理见 [MEMORY_AUDIT](../docs/MEMORY_AUDIT.md) |
+| 字号与文档／打印隔离 | `unit/ui-typography.test.ts`、`integration/ui-typography-migration.test.ts`、`e2e/typography.spec.ts` |
+| 快捷键、退出 | `unit/keyboard-shortcuts.test.ts`、`e2e/keyboard-logout-layout.spec.ts` |
+| 知识库、引用、IME | `integration/knowledge.test.ts`、`unit/knowledge-mention-plugin.test.ts`、`e2e/knowledge-workspace.spec.ts`、`e2e/knowledge-input-admin.spec.ts` |
+| 知识库与引用弹窗布局 | `e2e/knowledge-layout.spec.ts` |
+| CNF／名称冲突 | `integration/cnf-round-trip.test.ts`、`e2e/native-notebook-transfer.spec.ts`、`e2e/knowledge-workspace.spec.ts` |
+| 管理员用户 ZIP 恢复 | `integration/user-knowledge-backup.test.ts`、`e2e/knowledge-workspace.spec.ts` |
+| 图片、永久删除、存储清理 | `integration/admin-user-deletion.test.ts`、`integration/missing-asset-cleanup.test.ts`、`unit/asset-references.test.ts`、`e2e/admin-users-storage.spec.ts` |
+| 管理员只读知识库 | `integration/admin-knowledge.test.ts`、`e2e/knowledge-input-admin.spec.ts` |
+| 封面、面板、滚动 | `e2e/notebook-home-crop.spec.ts`、`e2e/workspace-panels.spec.ts`、`e2e/sidebar-scrolling.spec.ts` |
+| 表格逻辑列上限 | `unit/table-limit.test.ts`、`e2e/table-columns.spec.ts` |
 
-最终视觉与像素补充验证的实际命令：
+表中路径相对 `tests/`。按实际修改补充测试；涉及认证、版本、恢复和附件归属时，不能只测纯函数。备份、迁移升级和清理必须做专项失败／回滚验证。
 
-```bash
-E2E_ALLOW_MUTATIONS=1 node node_modules/@playwright/test/cli.js test tests/e2e/native-notebook-transfer.spec.ts tests/e2e/notebook-home-crop.spec.ts --output=test-results/native-visual
-E2E_ALLOW_MUTATIONS=1 node node_modules/@playwright/test/cli.js test tests/e2e/notebook-home-crop.spec.ts --output=test-results/crop-pixels
-```
+## 6. 结果与限制
 
-以上命令也须使用一次性 3002 环境并在运行后清理。
+交付报告本次执行的命令、结果、环境和未验证项，不引用旧计数冒充当前结果。浏览器进程中止不算完整通过，补跑要说明范围。
 
-## 面板布局专项
+Chromium 视口回归不能代替 Safari／Firefox、真实手机、系统原生打印或长期内存分析。CDP 组合输入经过真实编辑器事件链，但不等于实测所有操作系统输入法；事务回滚测试不等于断电恢复保障。
 
-`tests/e2e/workspace-panels.spec.ts` 覆盖 300～450px 拖动／键盘边界、宽度记忆、编辑器及编辑内容保留、移动抽屉、默认文件夹缩进、贴边滚动条、品牌图标和右侧搜索。
-
-```bash
-E2E_ALLOW_MUTATIONS=1 npm run test:e2e -- tests/e2e/workspace-panels.spec.ts
-```
-
-须先按上文启动一次性 3002 服务，验证后清理。
-
-本轮面板调整实际运行并通过：
-
-```bash
-E2E_ALLOW_MUTATIONS=1 E2E_ADMIN_PASSWORD=V31DisposableAdmin12345 node node_modules/@playwright/test/cli.js test --output=test-results/panel-layout
-E2E_ALLOW_MUTATIONS=1 node node_modules/@playwright/test/cli.js test tests/e2e/sidebar-scrolling.spec.ts tests/e2e/workspace-panels.spec.ts tests/e2e/notebook-home-crop.spec.ts tests/e2e/keyboard-logout-layout.spec.ts tests/e2e/typography.spec.ts --grep 'sidebar labels|page panel resizing|home cards|exact keyboard|all presets remain usable' --output=test-results/sidebar-final
-```
-
-完整 27 项通过，最后 5 项专项通过；另有工具栏和多档字号 3 项补充通过。类型检查、ESLint 与 Docker 生产构建通过；本轮未改数据库或真实环境配置。
-
-## 编辑器空闲性能回归（1.0.1112）
-
-`tests/e2e/editor-idle.spec.ts` 检查聚焦、纯元数据事务、编辑、加粗、字号、撤销／重做、保存与切页后的空闲状态。使用真实编辑器事件统计，检查停止操作后事务数量不继续增加，不以容易波动的固定内存阈值作为断言。保存返回不重建编辑器，切页返回保留正文与格式。
-
-```bash
-docker compose -f docker-compose.e2e.yml up -d --build --wait
-E2E_BASE_URL=http://127.0.0.1:3002 E2E_ALLOW_MUTATIONS=1 \
-  npm run test:e2e -- tests/e2e/editor-idle.spec.ts
-docker compose -f docker-compose.e2e.yml down
-```
-
-测试成功或失败后均清理本次一次性环境。该用例不能替代长时间、多浏览器的内存分析。
-
-本次实际执行的静态检查入口（Node 路径按本机环境设置）：
-
-```bash
-node node_modules/typescript/bin/tsc --noEmit
-node node_modules/eslint/bin/eslint.js src
-```
-
-本机通过已有 Node 执行对应的 TypeScript 和 ESLint 入口；全部 71 项 Vitest 测试在 Node20 隔离容器中通过，避免本机原生 SQLite 模块的 ABI 差异。生产镜像构建通过。新增空闲专项单独执行通过，并额外测量输入后静置 60 秒：事务增量 0，配置更新 0，节点／监听器数量不增长。有限时间测量不代表所有浏览器和复杂文档均已完成长期内存验证。
-
-完整浏览器回归实际执行并通过（28 项）：
-
-```bash
-E2E_ALLOW_MUTATIONS=1 E2E_ADMIN_PASSWORD=V31DisposableAdmin12345 \
-  node node_modules/@playwright/test/cli.js test --output=test-results/editor-idle-full
-```
-
-该口令仅属于一次性 Compose 环境；本轮独立的空闲专项也通过（1 项），完整套件包含该专项。测试后执行 `docker compose -f docker-compose.e2e.yml down` 清理。
-
-
-## 知识库系统回归（1.1.1118）
-
-2026-11-18 后续修正：移除标签业务测试及入口，保留引用、授权、保存和导入回滚的关键断言；新增独立路由、浅深色不透明预览、新窗口外链、管理员冲突列表及取消／复用／重命名操作。历史标签表不删除，导出不再读取标签；专项测试确认原标签记录保留。
-
-本次实际通过 26 个 Vitest 文件、92 项单元／隔离集成测试，覆盖名字归一唯一性、精确引用修复、版本冲突、CNF2／用户 ZIP2 的复用与重命名、原正文保护、循环引用 ID 映射、旧表保留和外链安全。追加的 CNF 循环引用重命名及遗留标签保护断言另行执行，8 项 CNF 集成测试通过。TypeScript、ESLint 和隔离 Docker 生产镜像构建通过。
-
-`knowledge-workspace.spec.ts` 包含 8 项浏览器／HTTP 用例；只有过时标签功能的断言被替换为移除验证。新流程通过真实文件上传、服务端 409 和恢复写入验证，不靠模拟成功响应。外链测试拦截维基百科请求返回测试内容，不依赖外站联网。知识库可直接访问 `/app/library` 并刷新或通过历史返回。
-
-```bash
-docker compose -f docker-compose.e2e.yml up -d --build --wait
-E2E_BASE_URL=http://127.0.0.1:3002 E2E_ALLOW_MUTATIONS=1 \
-  E2E_ADMIN_PASSWORD=V31DisposableAdmin12345 npm run test:e2e
-# 成功或失败均清理本次创建的服务：
-docker compose -f docker-compose.e2e.yml down
-```
-
-管理员口令仅用于一次性测试环境。不能指向正式 3000 或持久化测试 3001。Chromium 桌面／移动视口的自动化不能替代真实设备、系统中文输入法、Safari／Firefox 或长期大规模运行验收。没有将真实数据库用作夹具，也没有执行真实迁移、生产部署或数据恢复。
-
-本轮完整 Chromium 回归通过 36 项（`test-results/knowledge-refinements`）。最终补充导入目标并发变动的普通 409 保护后，生产镜像再次构建成功，8 项知识库专项再次通过（`test-results/knowledge-refinements-final`），包含对缺少冲突清单错误的模拟响应验证；实际成功导入／恢复仍使用真实 API。深色预览截图已检查。一次性测试服务完成后清理。
-
-
-## 知识库界面重构（1.1.1118）
-
-本轮定向锁定 lucide-react 1.22.0；导入／导出使用官方 DatabaseArrowDown／DatabaseArrowUp，没有自绘 SVG 或额外图标依赖。重新构建 Node20 依赖镜像后，26 个文件的 92 项单元／集成测试通过，包含全局 UI 字号守卫。TypeScript、ESLint 及隔离生产构建通过。
-
-新增 `knowledge-layout.spec.ts` 的 2 项场景覆盖 14 篇长词条、6 个长别名、三档字号以及 1440／768／390／320px 宽度，验证无横向溢出、长文字省略、90% 背景不透明度与完整文字不透明度、候选区键盘滚动、预览三行省略／分割线，以及引用检查修复面板。保存／阅读／新建和移除返回按钮的断言已按新行为调整，保留归属、版本冲突、来源跳转、复制／粘贴及循环引用保护；页内搜索验证改为撤销／重做旁的实际位置与原有快捷键。
-
-初次完整浏览器进程在 27 项通过后被终止，不计作完整通过；最终镜像上分组执行全部 38 项并通过：`test-results/knowledge-ui-final` 为 15 项知识库、字号和工具栏回归，`test-results/knowledge-ui-regression` 为剩余 23 项原功能回归。最终截图已复核，另验证了深色联想菜单、长引用摘要截断，以及保存后编辑器 DOM 保持不变并可继续输入。
-
-所有截图来自隔离夹具，不包含真实账号或正文。一次性服务已清理，没有数据库迁移或真实环境改动；Safari／Firefox、真实手机与操作系统输入法等验收限制仍适用。
-
-
-## 中文输入与管理控制台修正（1.1.1118）
-
-新增 `knowledge-mention-plugin` 的 7 项单元回归，验证批量 @中文、组合输入期间不确认、触发符替换、Esc／代码边界、销毁释放和 ProseMirror 插件视图重建。新增 `admin-knowledge` 的 2 项隔离集成回归，覆盖归一别名、LIKE 字面转义、元数据范围、分页与回收站。最终 28 个文件、101 项单元／集成测试通过；类型检查、ESLint 和隔离生产构建通过。
-
-`knowledge-input-admin.spec.ts` 使用 Chromium CDP 的 `Input.imeSetComposition` 与 `Input.insertText` 发出组合输入事件，验证 `@内存` 整段提交、`@` 后组合输入、中文邻接、替换原触发符，以及 Esc 和邮箱排除。它经过真实编辑器／ProseMirror 事件链，仍不等同于逐一实测 Windows／macOS／Linux 原生输入法。后台专项经真实 HTTP 验证普通用户拒绝访问、管理员概览与用户词条数、列表分页与状态筛选，断言接口不返回正文。
-
-引用修复测试改为先选处理方式、再确认提交，继续检查逐处修复、剩余问题数量及正文；保存测试确认不再有额外阅读按钮。图标断言同步为导入 DatabaseArrowUp、导出 DatabaseArrowDown。测试数据仅使用临时数据库和一次性 3002 服务。
-
-完整 Chromium 回归按两组执行并通过全部 40 项：`test-results/knowledge-input-final` 为 21 项，`test-results/knowledge-input-regression` 为其余 19 项。截图复核包括桌面／移动引用修复和移动后台词条列表。
-
-最终补充“Esc 后删除触发符再用 IME 输入”的回归后，重新完成类型、Lint、101 项单元／集成验证及生产构建；最终镜像上的 11 项中文输入、后台、知识库及编辑器空闲专项再次通过（`test-results/knowledge-input-edge-final`）。本次一次性服务验证完成后清理，没有数据库迁移或真实环境改动。
+只改文档时检查 Markdown 链接、代码块语法、脚本名与源码描述即可，不为文档整理连接真实数据或执行部署。
